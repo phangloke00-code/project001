@@ -502,8 +502,9 @@ async function micToggle(){
 function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
 // 谐波和：把一个音的前 6 个泛音能量加起来。低音（C2 这类）基音很弱，靠泛音也能认出来
 const HW=[1,1,1,1,.8,.7];
-function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d;} return {s,pk}; }
-function present(m){ const a=hsum(m); return a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
+function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200,low=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d; if(h<=2&&d>low) low=d;} return {s,pk,ok:low>=pk-12}; }
+// ok：基音或第 2 泛音必须够响，否则多半是更高的音被当成了它的泛音（例如 G4 被认成 G2）
+function present(m){ const a=hsum(m); return a.ok&&a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
 function micFrame(now){
   MIC.an.getFloatTimeDomainData(MIC.td); let s=0; const n=1024, td=MIC.td;
   for(let i=td.length-n;i<td.length;i++) s+=td[i]*td[i];
@@ -514,11 +515,13 @@ function micFrame(now){
   let fl=0; for(let i=10;i<410;i++) fl+=MIC.fd[i]; MIC.floor=fl/400;
   // 找出现在响着的音，去掉泛音（比它低一个八度/十二度的音也在响，就算泛音）
   let best=null,bs=0;
-  if(rms>.004){ for(let m=33;m<=96;m++){ const a=hsum(m); if(a.s>bs){bs=a.s;best=m;} }
+  if(rms>.004){ for(let m=36;m<=96;m++){ const a=hsum(m); if(a.ok&&a.s>bs){bs=a.s;best=m;} }
+    // 高八度的音能解释差不多的能量，就选高八度（避免 G4 被认成 G3、G2）
+    while(best!=null&&best+12<=96){ const u=hsum(best+12); if(u.ok&&u.s>.8*hsum(best).s) best+=12; else break; }
     if(best!=null&&hsum(best).pk<MIC.floor+MIC.sens) best=null; }
   // 同一个音连续 3 帧才算数；每次按键（起音）只报一个音，然后一直显示到下一次按键
   if(best!=null&&best===MIC.cand) MIC.candN++; else {MIC.cand=best; MIC.candN=1;}
-  if(MIC.cand!=null&&MIC.candN>=3&&MIC.onset>(MIC.emitAt||0)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; micNote(MIC.cand,now); }
+  if(MIC.cand!=null&&MIC.candN>=4&&MIC.onset>(MIC.emitAt||0)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; micNote(MIC.cand,now); }
   if(rms<.003&&now-(MIC.shownAt||0)>800) MIC.shown=null;
   MIC.heard=MIC.shown;
   const el=document.getElementById("micHud"); if(el){ const t=`听到：${MIC.shown!=null?nameOf(MIC.shown):"—"}  音量 ${"▮".repeat(Math.min(8,Math.round(rms*120)))}`; if(t!==MIC.hudTxt){MIC.hudTxt=t; el.textContent=t;} }
