@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>html{color-scheme:light}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style></head><body>
+<title>琴键闯关</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&family=IBM+Plex+Mono:wght@500;600&family=Noto+Music&display=swap">
+<style>
+/* Layout: one 920px column — level card, scrollable tab bar, active view. The practice room is a dark "stage" with falling notes over a keyboard. Teal = right hand / progress, amber = left hand / XP. */
+:root{
+  --bg:#EEF0F3; --surface:#FFFFFF; --ink:#16181D; --muted:#5C6370; --line:#D6DAE1;
+  --accent:#137A86; --accent-ink:#FFFFFF; --soft:#DDEFF1; --xp:#B07A16; --xp-soft:#F3E7CC; --lock:#A3A9B3; --bad:#B3402E; --good:#2E8B57;
+  --stage:#12141A; --stage-line:#262A34; --ivory:#FAF8F2; --ebony:#1A1B20; --rh:#2BB3C0; --lh:#E2A33A;
+  --f-display:"ZCOOL QingKe HuangYou","PingFang SC","Microsoft YaHei",sans-serif;
+  --f-body:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1014; --surface:#171A20; --ink:#E6E8EC; --muted:#99A0AC; --line:#2A2F38;
+  --accent:#3CC2CF; --accent-ink:#081214; --soft:#16292C; --xp:#E5B04E; --xp-soft:#2D2614; --lock:#4B515C; --bad:#E2765F; --good:#5BC48A;
+  --stage:#08090C; --stage-line:#1D2028; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1014; --surface:#171A20; --ink:#E6E8EC; --muted:#99A0AC; --line:#2A2F38;
+  --accent:#3CC2CF; --accent-ink:#081214; --soft:#16292C; --xp:#E5B04E; --xp-soft:#2D2614; --lock:#4B515C; --bad:#E2765F; --good:#5BC48A;
+  --stage:#08090C; --stage-line:#1D2028; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.65}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.wrap{max-width:920px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 60px}
+h1,h2,h3{font-family:var(--f-display);font-weight:400;text-wrap:balance;margin:0;line-height:1.25;letter-spacing:.02em}
+h2{font-size:26px} h3{font-size:20px}
+p{margin:0}
+button{font:inherit;cursor:pointer;color:inherit}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible,canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)} .small{font-size:13px}
+.stack{display:grid;gap:14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 14px;line-height:1.3}
+.btn:hover{border-color:var(--accent)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.on{background:var(--soft);border-color:var(--accent);color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+.chip{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;background:var(--soft);color:var(--accent);white-space:nowrap}
+.chip.xp{background:var(--xp-soft);color:var(--xp)}
+
+/* level card */
+.rank{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center}
+.lvbadge{width:78px;height:78px;border-radius:12px;background:var(--ebony);color:var(--ivory);display:grid;place-items:center;font-family:var(--f-display);font-size:34px;position:relative;box-shadow:inset 0 -10px 0 #000}
+.lvbadge small{position:absolute;top:-9px;right:-9px;background:var(--xp);color:var(--surface);font-family:var(--f-mono);font-size:11px;padding:0 6px;border-radius:9px;line-height:18px}
+.rank h1{font-size:30px}
+.bar{height:10px;background:var(--xp-soft);border-radius:6px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;background:var(--xp);border-radius:6px;transition:width .4s}
+.stats{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:6px;font-size:13px;color:var(--muted)}
+
+/* tabs */
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);margin-block:16px;overflow-x:auto;display:flex;gap:4px;border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabs button{border:0;background:none;padding:10px 12px;white-space:nowrap;color:var(--muted);border-bottom:2px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+
+/* quests */
+.quest{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:12px 0;border-top:1px solid var(--line)}
+.quest:first-child{border-top:0}
+.quest input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent)}
+.quest .q-t{font-weight:600}
+.quest.done .q-t{text-decoration:line-through;color:var(--muted)}
+.lesson{border-left:3px solid var(--accent);padding-left:14px;display:grid;gap:10px}
+.lesson ul,.lesson ol{margin:0;padding-left:20px}
+.lesson b{color:var(--accent)}
+.kbd{font-family:var(--f-mono);background:var(--soft);padding:0 5px;border-radius:4px;font-size:13px}
+details>summary{cursor:pointer;font-weight:600}
+.boss{border:2px solid var(--xp);background:var(--xp-soft);border-radius:12px;padding:16px}
+.boss label{display:flex;gap:10px;align-items:flex-start;padding:4px 0}
+.boss input{width:20px;height:20px;accent-color:var(--xp);flex:none;margin-top:3px}
+
+/* map */
+.world{display:grid;gap:10px}
+.nodes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.node{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;display:grid;gap:2px}
+.node .num{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.node.clear{border-color:var(--good)} .node.clear .num::after{content:" ✓ 已通关";color:var(--good)}
+.node.now{border:2px solid var(--accent);background:var(--soft)}
+.node.locked{color:var(--lock);cursor:not-allowed}
+.node.locked .num::after{content:" · 未解锁"}
+
+/* stage */
+.stage-wrap{background:var(--stage);border-radius:12px;padding:10px;overflow-x:auto}
+#stage,#qboard{display:block;touch-action:none;border-radius:6px}
+.ctrl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 18px}
+.ctrl label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+select,input[type=number],textarea,input[type=text]{font:inherit;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%}
+textarea{font-family:var(--f-mono);font-size:13px;min-height:84px;resize:vertical}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.hud{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--muted);min-height:22px}
+.hud b{color:var(--ink)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+/* quiz */
+.qprompt{display:grid;place-items:center;min-height:130px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px}
+.jp{font-family:var(--f-mono);font-size:64px;line-height:1;position:relative;display:inline-block;padding:14px 6px}
+.jp .dot{position:absolute;left:50%;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;background:currentColor}
+.answers{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:8px}
+.answers .btn{font-family:var(--f-mono);font-size:17px;padding:10px 0}
+.fb{min-height:24px;font-weight:600}
+.fb.ok{color:var(--good)} .fb.no{color:var(--bad)}
+
+/* progress */
+.heat{display:grid;grid-template-rows:repeat(7,12px);grid-auto-flow:column;grid-auto-columns:12px;gap:3px;overflow-x:auto;padding-bottom:4px}
+.heat i{border-radius:2px;background:var(--line)}
+.heat i[data-n="1"]{background:color-mix(in srgb,var(--accent) 35%,var(--line))}
+.heat i[data-n="2"]{background:color-mix(in srgb,var(--accent) 65%,var(--line))}
+.heat i[data-n="3"]{background:var(--accent)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kv div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kv b{display:block;font-family:var(--f-mono);font-size:22px}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.bdg{border:1px dashed var(--line);border-radius:10px;padding:8px 10px;color:var(--lock)}
+.bdg.got{border-style:solid;border-color:var(--xp);color:var(--ink);background:var(--xp-soft)}
+.ai-out{white-space:pre-wrap;background:var(--soft);border-radius:10px;padding:12px;min-height:60px}
+.log{border-collapse:collapse;width:100%;font-size:13px}.log th,.log td{text-align:left;padding:6px 8px;border-top:1px solid var(--line);white-space:nowrap}.log th{color:var(--muted);font-weight:500;border-top:0}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;z-index:20;max-width:calc(100% - 32px)}
+@media (max-width:520px){ .rank{grid-template-columns:1fr} .rank h1{font-size:24px} }
+@media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+
+<div class="wrap">
+  <section class="panel rank" id="rank"></section>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <main id="view"></main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ===================== 课程数据 ===================== */
+const SONG_URL="https://www.youtube.com/watch?v=k8hSeXbKZRI";
+const SHEET_URL="http://www.gangqinpu.com/html/1000679.htm";
+const WORLDS=[
+  {n:"第一章 · 认识琴键",lv:[1,2,3],gate:200,min:15},
+  {n:"第二章 · 右手旋律",lv:[4,5,6],gate:300,min:20},
+  {n:"第三章 · 左手与和弦",lv:[7,8,9],gate:300,min:20},
+  {n:"第四章 · 流行伴奏",lv:[10,11,12],gate:400,min:25},
+  {n:"终章 · 失眠的夜",lv:[13,14,15],gate:500,min:30},
+];
+const worldOf=lv=>WORLDS.find(w=>w.lv.includes(lv));
+// 左手分解和弦 1-5-8-5，每个和弦 4 拍
+const arp=(r,f,o,times=1)=>(`${r}:0.5 ${f}:0.5 ${o}:0.5 ${f}:0.5 `).repeat(2*times);
+const djL=(oct,n=4)=>(`${oct}:1 `).repeat(n);
+const djR=(ch,n=4)=>(`0:0.5 ${ch}:0.5 `).repeat(n);
+
+const L={
+1:{t:"琴键地图",goal:"闭着眼也能找到任何一个 C，右手放在 C 五指位置弹出《欢乐颂》。",
+ lesson:`<p><b>黑键是路标。</b>黑键 2 个一组、3 个一组交替排列。<b>2 个黑键左边那个白键就是 C</b>，往右依次是 D E F G A B，然后又回到 C。从一个 C 到下一个 C 叫做<b>一个八度</b>。</p>
+<p><b>中央 C（C4）</b>是离琴中间最近的 C。电子琴 61 键版一般有 5 个 C，从左往右叫 C2 C3 C4 C5 C6，数字越大音越高。练琴房里的键上都标了名字。</p>
+<p><b>手指编号：</b>两只手都是大拇指 = 1，食指 = 2，中指 = 3，无名指 = 4，小指 = 5。谱上写的小数字就是用哪根手指。</p>
+<p><b>C 五指位置：</b>右手 1 指放 C4，2 指 D，3 指 E，4 指 F，5 指 G。每根手指管一个键，不用看手也知道按的是什么。</p>
+<p><b>坐姿与手型：</b>坐在琴凳前半部分，手肘和琴键差不多高，手像轻轻握着一个鸡蛋，用指尖按键，手腕放松不要塌。</p>
+<p class="muted small">你以前跟着视频"看哪里亮就按哪里"，那是在模仿。从今天起换成"知道自己在按什么"：先叫得出键名，再按下去。</p>`,
+ ex:[{n:"C 五指上下行",bpm:60,rh:"C D E F G F E D C:4"},
+     {n:"找出所有的 C",bpm:60,rh:"C2:2 C3:2 C4:2 C5:2 C6:4",tip:"每个 C 都在两个黑键的左边"},
+     {n:"欢乐颂（五指位置）",bpm:72,rh:"E E F G | G F E D | C C D E | E:1.5 D:0.5 D:2 | E E F G | G F E D | C C D E | D:1.5 C:0.5 C:2"}],
+ quiz:"white",
+ boss:{t:"琴键侦探",c:["闭眼摸黑键，找到 3 个不同的 C，睁眼核对全对","在认键游戏「白键」模式拿到 9 分以上","不看手，用 C 五指位置在电子琴上弹完整首《欢乐颂》，不停顿"]}},
+2:{t:"节拍与节奏",goal:"跟着节拍器稳定数拍，弹完整首《小星星》不赶不拖。",
+ lesson:`<p><b>拍子是音乐的心跳。</b>节拍器每响一下是 1 拍。流行歌几乎都是 <b>4/4 拍</b>：每小节 4 拍，第 1 拍最重，像"<b>强</b> 弱 次强 弱"。</p>
+<ul><li><b>四分音符</b> = 1 拍（数"1"）</li><li><b>二分音符</b> = 2 拍（数"1 2"）</li><li><b>全音符</b> = 4 拍（数"1 2 3 4"）</li><li><b>休止符</b> = 不弹，但拍子照数</li></ul>
+<p><b>练法：</b>先只拍手、嘴里数"1 2 3 4"，再上琴。按键的瞬间要和"嗒"一起，音要按满时值再抬手，别弹完就跑。</p>
+<p><b>BPM</b> 是每分钟多少拍。60 = 一秒一拍。DJ 版《失眠的夜》大概在 120 以上，所以我们会一步步提速。</p>
+<p class="muted small">练琴房里打开"节拍器"，下落音符的长短就是时值：方块越长按越久。</p>`,
+ ex:[{n:"拍子走路",bpm:60,rh:"C C C C | D:2 D:2 | E E E E | C:4"},
+     {n:"小星星",bpm:72,rh:"C C G G | A A G:2 | F F E E | D D C:2 | G G F F | E E D:2 | G G F F | E E D:2 | C C G G | A A G:2 | F F E E | D D C:2",tip:"第 2 句 A 超出五指位置，用 5 指去够或者整只手往右挪一格"},
+     {n:"休止符练习",bpm:66,rh:"C 0 E 0 | G:2 0:2 | G 0 E 0 | C:2 0:2"}],
+ quiz:"white",
+ boss:{t:"稳拍者",c:["节拍器 72，拍手数完 8 小节不掉拍","练琴房《小星星》等待模式通关，准确率 90% 以上","关掉练琴房，在电子琴上跟节拍器 80 弹完《小星星》"]}},
+3:{t:"看懂乐谱",goal:"认得简谱和五线谱高音谱号上的音，看谱弹出《两只老虎》。",
+ lesson:`<p>《失眠的夜》的谱（虫虫钢琴）通常有<b>简谱</b>和<b>五线谱</b>两种，两种都要会看。</p>
+<p><b>简谱（1=C 时）：</b>1 2 3 4 5 6 7 = C D E F G A B（do re mi fa sol la si）。数字<b>上面加点</b>高八度（C5），<b>下面加点</b>低八度（C3）。数字后面的 <span class="kbd">-</span> 表示多拉 1 拍；数字<b>下面一条横线</b>是半拍，两条是 1/4 拍；<b>右边一个点</b>（附点）表示加长一半。</p>
+<p><b>"1=G"、"1=D" 是什么：</b>表示 1 从哪个键开始。比如 1=G 时，1 就是 G，其他音跟着平移。第 6 关会讲。</p>
+<p><b>五线谱高音谱号（右手）：</b>五条线从下往上是 <b>E G B D F</b>，四个间从下往上是 <b>F A C E</b>。中央 C 在五线下方，要加一条短线。</p>
+<p><b>五线谱低音谱号（左手）：</b>线是 <b>G B D F A</b>，间是 <b>A C E G</b>。第 7 关再细练。</p>
+<p class="muted small">认键游戏有「简谱」和「五线谱」两个模式，每天玩一局，比背表格快得多。</p>`,
+ ex:[{n:"两只老虎",bpm:80,rh:"C D E C | C D E C | E F G:2 | E F G:2 | G:0.5 A:0.5 G:0.5 F:0.5 E C | G:0.5 A:0.5 G:0.5 F:0.5 E C | C G3 C:2 | C G3 C:2",tip:"简谱：1 2 3 1 | 1 2 3 1 | 3 4 5 - | 3 4 5 - | 56 54 3 1 | 56 54 3 1 | 1 5̣ 1 - | 1 5̣ 1 -"},
+     {n:"跨八度：低中高",bpm:66,rh:"C3 E3 G3 C4 | E4 G4 C5:2 | C5 G4 E4 C4 | G3 E3 C3:2"}],
+ quiz:"jianpu",
+ boss:{t:"识谱者",c:["认键游戏「简谱」模式 9 分以上","认键游戏「五线谱」模式 8 分以上","只看简谱（练琴房提示里那行）在电子琴上弹完《两只老虎》"]}},
+4:{t:"音阶与穿指",goal:"右手用正确指法弹 C 大调音阶，上下行连贯、不断音。",
+ lesson:`<p>五个手指只能管 5 个键。旋律一超出范围，就要<b>穿指</b>和<b>跨指</b>。这是钢琴最核心的技术之一。</p>
+<p><b>C 大调音阶右手指法：</b>上行 <span class="kbd">1 2 3 | 1 2 3 4 5</span>：弹完 E（3 指）后，<b>大拇指从手掌下面穿过去</b>按 F。下行 <span class="kbd">5 4 3 2 1 | 3 2 1</span>：弹完 F（1 指）后，<b>3 指从大拇指上面跨过去</b>按 E。</p>
+<p><b>要点：</b>穿指时手腕保持水平往右平移，不要甩手腕；拇指提前准备。先慢到 50 BPM，每个音一样响、一样长。</p>
+<p><b>连奏（legato）：</b>前一个键抬起的同时按下一个键，声音连成一条线。这就是"像唱歌一样弹"。</p>`,
+ ex:[{n:"C 大调音阶（一个八度）",bpm:60,rh:"C D E F G A B C5 | C5 B4 A G F E D C:2"},
+     {n:"C 大调音阶（两个八度）",bpm:60,rh:"C D E F G A B C5 D5 E5 F5 G5 A5 B5 C6:2 | B5 A5 G5 F5 E5 D5 C5 B4 A4 G4 F4 E4 D4 C4:2",tip:"两个八度指法：1 2 3 1 2 3 4 1 2 3 1 2 3 4 5"},
+     {n:"音阶旋律",bpm:72,rh:"C E D F | E G F A | G B A C5 | B:2 C5:2"}],
+ quiz:"staff",
+ boss:{t:"穿指大师",c:["练琴房两个八度音阶，等待模式准确率 90% 以上","电子琴上节拍器 80，C 大调两个八度上下行，指法全对","录一段自己的音阶（手机就行），听回来每个音一样响"]}},
+5:{t:"八分音符与切分",goal:"弹准半拍、附点和切分。这些是 DJ 版律动感的来源。",
+ lesson:`<p><b>八分音符</b> = 半拍，一拍里弹两个。数法："<b>1</b> 嗯 <b>2</b> 嗯"，嘴里说"1 &amp; 2 &amp;"。</p>
+<p><b>附点四分音符</b> = 1.5 拍，常和半拍组合："哒——嗒"（长 短）。</p>
+<p><b>切分音：</b>重音落在弱拍或拍子中间，比如"短 长 短"（半拍 1拍 半拍）。流行歌和 DJ 版那种"往前推"的感觉，大部分来自切分。</p>
+<p><b>练法：</b>节拍器响在 1 2 3 4 上，你拍手拍在"&amp;"上（反拍）。能稳定拍反拍，切分就不怕了。</p>
+<p class="muted small">在练琴房：这类节奏先用 50% 速度看清方块长短，再提速。</p>`,
+ ex:[{n:"八分音符",bpm:72,rh:"C:0.5 D:0.5 E:0.5 F:0.5 G G | A:0.5 G:0.5 F:0.5 E:0.5 D:2 | E:0.5 F:0.5 G:0.5 A:0.5 G G | F:0.5 E:0.5 D:0.5 E:0.5 C:2"},
+     {n:"附点节奏",bpm:72,rh:"C:1.5 D:0.5 E:1.5 F:0.5 | G:4 | A:1.5 G:0.5 F:1.5 E:0.5 | D:4"},
+     {n:"切分律动（原创）",bpm:80,rh:"E:0.5 G G:0.5 0:0.5 A G:0.5 | E:0.5 D C:1.5 0:1 | E:0.5 G G:0.5 0:0.5 C5 B:0.5 | A:0.5 G:3.5"}],
+ quiz:"staff",
+ boss:{t:"律动者",c:["节拍器 80，拍反拍（只拍 &amp;）连续 16 拍不乱","「切分律动」等待模式准确率 90% 以上","「切分律动」示范模式 100% 速度下，在电子琴上跟着一起弹完"]}},
+6:{t:"黑键与调",goal:"认得所有黑键名字，会弹 G 大调和 F 大调，知道怎么用电子琴的移调键。",
+ lesson:`<p><b>半音与全音：</b>相邻两个键（包括黑键）差一个<b>半音</b>，隔一个键是<b>全音</b>。E-F、B-C 之间没有黑键，本来就是半音。</p>
+<p><b>升号 #</b> = 升高半音（往右一个键），<b>降号 b</b> = 降低半音（往左一个键）。所以 C# 和 Db 是同一个黑键。</p>
+<p><b>大调音阶公式：</b>全 全 半 全 全 全 半。从 C 开始正好全是白键；从 G 开始要把 F 换成 <b>F#</b>；从 F 开始要把 B 换成 <b>Bb</b>。</p>
+<p><b>调号：</b>谱子开头写的 # 或 b，表示整首歌这些音都要升或降。简谱"1=G"就是 G 大调。</p>
+<p><b>电子琴的 Transpose（移调）键：</b>如果谱子的调太难（很多黑键），可以把琴移调，用 C 调指法弹出原调的声音。先查一下你的琴有没有这个键。不过真正的钢琴手两种都要会。</p>`,
+ ex:[{n:"G 大调音阶",bpm:60,rh:"G A B C5 D5 E5 F#5 G5:2 | F#5 E5 D5 C5 B4 A4 G4:2",tip:"指法同 C 大调：1 2 3 1 2 3 4 5"},
+     {n:"F 大调五指",bpm:66,rh:"F G A Bb C5 Bb A G | F:4"},
+     {n:"半音阶散步",bpm:60,rh:"C C# D D# E F F# G | G F# F E D# D C# C:2"}],
+ quiz:"black",
+ boss:{t:"黑键行者",c:["认键游戏「黑键」模式 9 分以上","G 大调音阶等待模式准确率 90% 以上","在电子琴上找到移调（Transpose）功能，并试着把《小星星》移到 G 调弹（从 G 开始）"]}},
+7:{t:"唤醒左手",goal:"左手独立弹低音，读得懂低音谱号。",
+ lesson:`<p>左手是伴奏的地基。DJ 版里左手负责低音和律动，比右手还忙。</p>
+<p><b>左手 C 五指位置：</b>小指（5）放 C3，4 指 D，3 指 E，2 指 F，大拇指（1）G。注意<b>编号方向和右手相反</b>。</p>
+<p><b>低音谱号：</b>线从下往上 <b>G B D F A</b>，间 <b>A C E G</b>。中央 C 在低音谱表上方加一线。</p>
+<p><b>根音：</b>每个和弦最低的那个"名字音"。比如 C 和弦的根音是 C。流行伴奏最简单的弹法，就是左手只弹根音。</p>
+<p class="muted small">"左手根音"练习里的 C → G → A → F，就是第 10 关要学的流行万能和弦进行，先把它的低音弹熟。</p>`,
+ ex:[{n:"左手五指上下行",bpm:60,lh:"C3 D3 E3 F3 G3 F3 E3 D3 C3:4"},
+     {n:"左手根音（流行进行）",bpm:72,lh:"C3:4 G2:4 A2:4 F2:4 C3:4 G2:4 A2:4 F2:4"},
+     {n:"左手八度",bpm:66,lh:"C2+C3:4 G1+G2:4 A1+A2:4 F1+F2:4",tip:"小指 + 大拇指同时按两个 C，手张开一个八度。手小的话先只弹上面那个音"}],
+ quiz:"white",
+ boss:{t:"左手觉醒",c:["左手五指上下行在电子琴上不看手弹完","「左手根音」等待模式准确率 90% 以上","左手八度 C-G-A-F 跟节拍器 72 弹 4 轮"]}},
+8:{t:"三和弦",goal:"10 秒内按出 C、Dm、Em、F、G、Am 六个和弦。",
+ lesson:`<p><b>三和弦</b> = 根音 + 隔一个音 + 再隔一个音。在白键上就是"<b>按一个、跳一个、按一个、跳一个、按一个</b>"。</p>
+<p><b>大三和弦</b>（明亮）：根音往上 4 个半音 + 3 个半音。C = C E G，F = F A C，G = G B D。</p>
+<p><b>小三和弦</b>（忧伤，写作 m）：3 + 4 个半音。Am = A C E，Dm = D F A，Em = E G B。</p>
+<p>C 大调里这 6 个和弦能伴奏绝大部分流行歌。《失眠的夜》这种伤感情歌，<b>Am 常常是主角</b>。</p>
+<p><b>手型：</b>右手用 1-3-5 指，左手用 5-3-1 指。三个音必须同时落下、一样响。</p>`,
+ ex:[{n:"右手和弦 C F G C",bpm:60,rh:"C4+E4+G4:4 F4+A4+C5:4 G4+B4+D5:4 C5+E5+G5:4"},
+     {n:"左手和弦 C Am F G",bpm:60,lh:"C3+E3+G3:4 A2+C3+E3:4 F2+A2+C3:4 G2+B2+D3:4"},
+     {n:"六个和弦巡游",bpm:60,rh:"C4+E4+G4:2 D4+F4+A4:2 E4+G4+B4:2 F4+A4+C5:2 G4+B4+D5:2 A4+C5+E5:2 C5+E5+G5:4"}],
+ quiz:"chord",
+ boss:{t:"和弦收藏家",c:["认键游戏「和弦」模式 8 分以上","电子琴上，听别人（或自己随机）报和弦名，3 秒内按出","左手和弦 C Am F G 跟节拍器 72 弹 4 轮不停"]}},
+9:{t:"双手合作",goal:"右手旋律 + 左手低音，双手一起弹完两首曲子。",
+ lesson:`<p>双手一起是新手最大的坎。秘诀只有一个：<b>先分手，再合手，合手先极慢。</b></p>
+<ol><li>右手单独弹熟（不看谱也能弹）</li><li>左手单独弹熟</li><li>合手用 50% 速度，<b>只盯左手换音的那一拍</b>，那一拍两手同时落下</li><li>每次提速 10%</li></ol>
+<p>练琴房里选"只练右手"或"只练左手"，另一只手由电脑弹给你听。这就是分手练习的好帮手。</p>
+<p class="muted small">合手时脑子会乱，正常现象。大脑需要几天把动作"自动化"，睡一觉常常就会了。</p>`,
+ ex:[{n:"欢乐颂（双手）",bpm:66,rh:"E E F G | G F E D | C C D E | E:1.5 D:0.5 D:2 | E E F G | G F E D | C C D E | D:1.5 C:0.5 C:2",lh:"C3:4 G2:4 C3:4 G2:4 C3:4 G2:4 C3:4 G2:2 C3:2"},
+     {n:"小星星（双手）",bpm:66,rh:"C C G G | A A G:2 | F F E E | D D C:2",lh:"C3:4 F3:2 C3:2 F3:2 C3:2 G2:2 C3:2"},
+     {n:"小星星（左手和弦）",bpm:60,rh:"C C G G | A A G:2 | F F E E | D D C:2",lh:"C3+E3+G3:4 F3+A3+C4:2 C3+E3+G3:2 F3+A3+C4:2 C3+E3+G3:2 G2+B2+D3:2 C3+E3+G3:2"}],
+ quiz:"chord",
+ boss:{t:"双手觉醒",c:["欢乐颂（双手）等待模式「双手都练」准确率 85% 以上","电子琴上双手弹《欢乐颂》80 BPM 不停","小星星（左手和弦）在电子琴上弹完"]}},
+10:{t:"流行和弦进行",goal:"熟练弹出 1-5-6-4、6-4-1-5、4-5-3-6 三条流行和弦进行。",
+ lesson:`<p>流行歌的和弦大多按固定套路走，用数字表示（C 调里 1=C，4=F，5=G，6m=Am，3m=Em）：</p>
+<ul><li><b>1-5-6-4</b>（C G Am F）：万能进行，听起来很"歌"</li><li><b>6-4-1-5</b>（Am F C G）：伤感版，很多抖音热歌都是它</li><li><b>4-5-3-6</b>（F G Em Am）：华语抒情"王道进行"</li></ul>
+<p><b>转位：</b>同一个和弦的三个音可以换顺序。G 和弦弹 B D G（而不是 G B D），手就不用跳那么远，和弦连起来更顺。练习里右手用的都是"就近"的转位。</p>
+<p><b>听歌找和弦：</b>播放《失眠的夜》，一边听一边在琴上按 Am、F、C、G，哪个和弦和歌"融在一起"，就是那一段的和弦。</p>`,
+ ex:[{n:"1-5-6-4（C G Am F）",bpm:72,rh:"C4+E4+G4:4 B3+D4+G4:4 A3+C4+E4:4 A3+C4+F4:4",lh:"C3:4 G2:4 A2:4 F2:4"},
+     {n:"6-4-1-5（Am F C G）",bpm:72,rh:"A3+C4+E4:4 A3+C4+F4:4 G3+C4+E4:4 G3+B3+D4:4",lh:"A2:4 F2:4 C3:4 G2:4"},
+     {n:"4-5-3-6 王道进行",bpm:72,rh:"A3+C4+F4:4 B3+D4+G4:4 B3+E4+G4:4 A3+C4+E4:4",lh:"F2:4 G2:4 E2:4 A2:4"}],
+ quiz:"chord",
+ boss:{t:"和弦行者",c:["三条进行在电子琴上双手各弹 4 轮，换和弦不停顿","不看谱，凭记忆弹出 6-4-1-5","用耳朵在《失眠的夜》里找出至少一段的和弦，写进「我的曲谱」备注"]}},
+11:{t:"分解和弦与 DJ 律动",goal:"左手会两种伴奏型：抒情的分解和弦、DJ 版的八度律动。",
+ lesson:`<p><b>分解和弦 1-5-8-5：</b>不把和弦一起按下，而是按"根音、五音、高八度根音、五音"一个个弹，一拍两个。抒情钢琴最常用。左手指法：5 - 2 - 1 - 2。</p>
+<p><b>DJ 八度律动：</b>左手在每一拍上弹八度（"动"），右手在拍子中间弹和弦（"次"），连起来就是"动 次 动 次"。这是 DJ 热搜版的骨架。</p>
+<p><b>要点：</b>左手要像鼓一样稳，节奏比音准更重要。DJ 版速度快，先 60 BPM 练稳再一点点加。</p>`,
+ ex:[{n:"分解和弦 C G Am F",bpm:66,rh:"E5:4 D5:4 C5:4 C5:4",lh:arp("C3","G3","C4")+arp("G2","D3","G3")+arp("A2","E3","A3")+arp("F2","C3","F3")},
+     {n:"DJ 动次律动（Am F C G）",bpm:80,rh:djR("A3+C4+E4")+djR("A3+C4+F4")+djR("G3+C4+E4")+djR("G3+B3+D4"),lh:djL("A1+A2")+djL("F1+F2")+djL("C2+C3")+djL("G1+G2")},
+     {n:"DJ 律动 + 切分低音",bpm:84,rh:djR("A3+C4+E4")+djR("A3+C4+F4"),lh:"A1+A2:1.5 A1+A2:0.5 0:1 A1+A2:1 | F1+F2:1.5 F1+F2:0.5 0:1 F1+F2:1"}],
+ quiz:"chord",
+ boss:{t:"律动制造机",c:["分解和弦 C G Am F 在电子琴上 72 BPM 弹 4 轮","「DJ 动次律动」等待模式双手准确率 85% 以上","电子琴上用 DJ 律动弹 6-4-1-5，100 BPM 坚持 1 分钟"]}},
+12:{t:"踏板、力度与表现",goal:"会用延音，弹出强弱变化。原创小曲双手完整演奏。",
+ lesson:`<p><b>延音踏板 / Sustain：</b>踩下后抬手声音也不断，和弦会连成一片。电子琴如果没接踏板，面板上一般有 Sustain 按钮。<b>换和弦时要"抬一下再踩"</b>，否则声音会糊。</p>
+<p><b>力度：</b>电子琴开了 Touch Response（力度感应）后，按得重声音就大。p = 弱，mf = 中强，f = 强。主歌轻、副歌强，歌曲就有了起伏。</p>
+<p><b>旋律要比伴奏响：</b>右手旋律稍重，左手伴奏轻一点，这样听起来更像在"唱"。</p>
+<p class="muted small">这一关的原创小曲用到了前面所有技能：音阶、八分音符、附点、和弦进行、左手分解。弹完它，你就具备弹《失眠的夜》的全部基本功了。</p>`,
+ ex:[{n:"原创小曲《夜行》",bpm:66,rh:"E G C5:1.5 B:0.5 | D5:2 B G | C5 B:0.5 A:0.5 E:2 | F A C5 D5 | E5:1.5 D5:0.5 C5 G | B:1.5 A:0.5 G:2 | A C5 E5 D5 | C5:2 B:2 | C5:4",
+      lh:arp("C3","G3","C4")+arp("G2","D3","G3")+arp("A2","E3","A3")+arp("F2","C3","F3")+arp("C3","G3","C4")+arp("G2","D3","G3")+arp("A2","E3","A3")+arp("F2","C3","F3")+"C3+G3+C4:4"},
+     {n:"强弱对比练习",bpm:66,rh:"C4+E4+G4:2 C4+E4+G4:2 F4+A4+C5:2 F4+A4+C5:2 | G4+B4+D5:2 G4+B4+D5:2 C5+E5+G5:4",tip:"前两小节弹 p（轻），后两小节弹 f（强），注意整个和弦一起变"}],
+ quiz:"staff",
+ boss:{t:"小小演奏家",c:["《夜行》双手等待模式准确率 85% 以上","电子琴上带延音完整弹《夜行》，换和弦不糊","录下自己弹的《夜行》，听回来有强弱起伏"]}},
+13:{t:"拿到谱、拆开曲子",goal:"拿到《失眠的夜》的谱（或自己扒谱），分好段，把第一段写进「我的曲谱」。",
+ lesson:`<p><b>第一步：拿谱。</b>视频作者 Cuppix 在说明里给了谱的链接：<a href="${SHEET_URL}" target="_blank" rel="noopener">虫虫钢琴 · 失眠的夜</a>（可能要注册或付费）。有正谱最好，跟视频完全对得上。</p>
+<p><b>没有谱就扒谱：</b>打开<a href="${SONG_URL}" target="_blank" rel="noopener">原视频</a>，设置 → 播放速度 0.5，每 2–3 秒暂停一次，看下落方块落在哪个键，记下键名。你已经认识所有的键了，这一步会比以前快很多。</p>
+<p><b>第二步：分段。</b>流行歌一般是：<b>前奏 → 主歌 → 副歌 → 间奏 → 主歌 → 副歌 → 尾奏</b>。副歌（最好听、最"上头"的那段）往往会重复，<b>先练副歌</b>，最有成就感。</p>
+<p><b>第三步：看调。</b>谱子开头写的"1=?"或者调号，告诉你黑键用哪几个（第 6 关）。</p>
+<p><b>第四步：写进「我的曲谱」。</b>在练琴房下面，用 <span class="kbd">C D E:2 A3+C4+E4:4</span> 这种写法录入。看不懂怎么写，就把简谱贴给 AI 教练，选"简谱转练琴格式"，它帮你转。</p>`,
+ ex:[], quiz:"jianpu", useSong:true,
+ boss:{t:"扒谱者",c:["拿到谱，或者已经扒出副歌右手旋律","把整首曲子分好段（前奏/主歌/副歌…）写在曲谱备注里","副歌右手已经录进「我的曲谱」，练琴房能播放，听起来和原曲一样"]}},
+14:{t:"分手攻克全曲",goal:"右手旋律、左手伴奏分别能弹完整首。",
+ lesson:`<p><b>一段一段来，每天只啃一小段（4–8 小节）。</b>顺序：副歌 → 主歌 → 前奏/间奏 → 尾奏。</p>
+<p><b>右手：</b>先定指法（谱上没写就自己用铅笔标），难的地方单独拎出来练 5 遍。用练琴房"只练右手"的等待模式，从 50% 速度开始。</p>
+<p><b>左手：</b>DJ 版的左手大多是第 11 关的八度律动和切分低音。先只弹根音找和弦，再加八度和节奏。</p>
+<p><b>卡住怎么办：</b>把卡住的 2 个音单独循环 10 遍，再往前加 1 个音、往后加 1 个音。别从头开始弹，从头弹只会让开头越来越熟、后面越来越生。</p>
+<p class="muted small">一天练不完很正常。这一关的门槛是 500 XP，就是给你时间慢慢磨的。</p>`,
+ ex:[], quiz:"black", useSong:true,
+ boss:{t:"分手通关",c:["右手全曲录入「我的曲谱」，等待模式只练右手准确率 90%","左手全曲录入「我的曲谱」，等待模式只练左手准确率 90%","电子琴上右手单独弹完全曲（可以看谱）","电子琴上左手单独弹完全曲（可以看谱）"]}},
+15:{t:"失眠的夜 · 终极演出",goal:"双手完整弹出《失眠的夜》，录下来。",
+ lesson:`<p><b>合手顺序：</b>还是一段一段来。副歌合手 → 主歌合手 → 全曲串起来。每段先 50% 速度，稳了再加 10%。</p>
+<p><b>串联：</b>段落之间的"接缝"最容易断。专门练每段的最后一小节 + 下一段的第一小节。</p>
+<p><b>上台模拟：</b>录视频，从头弹到尾，<b>错了也不许停</b>。真正的演出就是错了也要接着弹，听众很少听得出来。</p>
+<p><b>最后：</b>和 Cuppix 的视频放在一起对比一下，然后去弹给朋友听。你从"看着方块点键"走到了"自己弹完一首曲子"。</p>`,
+ ex:[], quiz:"chord", useSong:true,
+ boss:{t:"终极 BOSS：失眠的夜",c:["副歌双手合奏，原速 80% 以上不停顿","全曲双手合奏，从头到尾不停（可以有小错）","录一段完整演奏视频","听自己的录音，和原视频对比，写下下一首想学的曲子"]}},
+};
+const NLV=15;
+const QUESTS=[
+  {id:"warm",t:"热身：五指 + 音阶",d:"电子琴上弹 C 五指上下行和本关学过的音阶各 3 遍，慢、稳、每个音一样响。",min:5,xp:10},
+  {id:"learn",t:"读本关课程",d:"读一遍上面的「本关知识」，看懂一条就在电子琴上试一下。",min:5,xp:10},
+  {id:"play",t:"练琴房：等待模式通关一首本关练习",d:"自动勾选：在练琴房用等待模式弹完本关任意一首练习。",min:10,xp:20},
+  {id:"real",t:"真琴时间",d:"",min:0,xp:25},
+  {id:"quiz",t:"认键游戏一局 8 分以上",d:"自动勾选：本关推荐的模式拿到 8 分以上。",min:3,xp:15},
+  {id:"song",t:"目标曲时间",d:"听一遍《失眠的夜》，试着在琴上找出一个你认得的音或和弦。",min:5,xp:10},
+];
+const BOSS_XP=100;
+const RANKS=[[0,"键盘新手"],[3,"识谱学徒"],[6,"旋律手"],[9,"双手演奏者"],[12,"伴奏玩家"],[15,"钢琴大师"]];
+const BADGES=[
+  {t:"第一个音",d:"打卡第一个任务",f:()=>Object.keys(S.days).length>0},
+  {t:"三天不断",d:"连续练习 3 天",f:()=>bestStreak()>=3},
+  {t:"一周琴友",d:"连续练习 7 天",f:()=>bestStreak()>=7},
+  {t:"满分侦探",d:"认键游戏任一模式拿到 10 分",f:()=>Object.values(S.quizBest).some(v=>v>=10)},
+  {t:"第一章通关",d:"打败第 3 关 BOSS",f:()=>!!S.boss[3]},
+  {t:"双手觉醒",d:"打败第 9 关 BOSS",f:()=>!!S.boss[9]},
+  {t:"伴奏玩家",d:"打败第 12 关 BOSS",f:()=>!!S.boss[12]},
+  {t:"扒谱者",d:"「我的曲谱」录入 50 个音以上",f:()=>songNotes().length>=50},
+  {t:"失眠的夜",d:"打败终极 BOSS",f:()=>!!S.boss[15]},
+];
+
+/* ===================== 状态 ===================== */
+const KEY="piano-quest-v1";
+const blank=()=>({v:1,ts:0,cur:1,days:{},boss:{},bossChk:{},done:{},quizBest:{},log:[],song:{name:"失眠的夜",bpm:70,rh:"",lh:"",memo:""}});
+let S=blank();
+try{const raw=localStorage.getItem(KEY); if(raw) S=Object.assign(blank(),JSON.parse(raw));}catch(e){}
+let dbDoc=null, writing=Promise.resolve(), saveTimer=null, syncNote="进度保存在本浏览器";
+function save(){
+  S.ts=Date.now();
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{ if(!dbDoc) return; const snap=JSON.parse(JSON.stringify(S));
+    writing=writing.then(()=>dbDoc.set({state:snap})).catch(()=>{}); },1200);
+}
+(async()=>{ // 登录后进度跟着账号走
+  try{
+    const db=await window.claude?.use?.("db"); const user=await window.claude?.use?.("user");
+    if(!db||!user) return; const id=await user.id(); if(!id) return;
+    const ref=db.doc("data/users/"+id+"/progress");
+    const snap=await Promise.race([ref.get(),new Promise((_,r)=>setTimeout(()=>r("timeout"),10000))]);
+    dbDoc=ref;
+    const remote=snap.exists?snap.data().state:null;
+    if(remote&&remote.ts>S.ts){S=Object.assign(blank(),remote);try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){} }
+    else if(S.ts>0) save();
+    syncNote="进度已同步到你的账号"; renderRank(); if(tab!=="room") render();
+  }catch(e){}
+})();
+
+/* ===================== 计算 ===================== */
+const pad=n=>String(n).padStart(2,"0");
+const dkey=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const today=()=>dkey(new Date());
+const qxp=id=>QUESTS.find(q=>q.id===id)?.xp||0;
+const dayQ=k=>(S.days[k]?.q)||[];
+function levelXP(lv){let x=0;for(const k in S.days)for(const e of dayQ(k))if(e.L===lv)x+=qxp(e.i);return x;}
+function totalXP(){let x=0;for(const k in S.days)for(const e of dayQ(k))x+=qxp(e.i);return x+Object.keys(S.boss).length*BOSS_XP;}
+function hasQ(id){return dayQ(today()).some(e=>e.i===id&&e.L===S.cur);}
+function setQ(id,on){
+  const k=today(); const d=S.days[k]||(S.days[k]={q:[]});
+  d.q=d.q.filter(e=>!(e.i===id&&e.L===S.cur));
+  if(on) d.q.push({i:id,L:S.cur});
+  if(!d.q.length&&!d.sec) delete S.days[k];
+  save();
+}
+function autoQ(id){ if(!hasQ(id)&&!S.boss[NLV]){ setQ(id,true); toast("任务完成 +"+qxp(id)+" XP"); renderRank(); } }
+function streak(){let n=0;const d=new Date();if(!S.days[dkey(d)])d.setDate(d.getDate()-1);while(S.days[dkey(d)]){n++;d.setDate(d.getDate()-1);}return n;}
+function bestStreak(){const ks=Object.keys(S.days).sort();let best=0,run=0,prev=null;for(const k of ks){const t=new Date(k+"T00:00");run=(prev&&(t-prev)/864e5<1.5)?run+1:1;best=Math.max(best,run);prev=t;}return best;}
+function rankName(){const c=Object.keys(S.boss).length;let r=RANKS[0][1];for(const [n,t] of RANKS)if(c>=n)r=t;return r;}
+const realMin=lv=>worldOf(lv).min;
+
+/* ===================== 记谱解析 ===================== */
+// 写法：C D# Bb3 E:2 0:1 C3+E3+G3:4  （默认右手第 4 八度、左手第 3 八度；0 = 休止；| 只是小节线）
+const isBlack=m=>[1,3,6,8,10].includes(((m%12)+12)%12);
+const NAMES=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const nameOf=m=>NAMES[((m%12)+12)%12]+(Math.floor(m/12)-1);
+function n2m(tok,defOct){
+  const m=/^([A-G])([#b]?)(\d)?$/.exec(tok); if(!m) return null;
+  const base={C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]];
+  return 12*((m[3]!=null?+m[3]:defOct)+1)+base+(m[2]==="#"?1:m[2]==="b"?-1:0);
+}
+function parseVoice(str,h,defOct){
+  const notes=[],errs=[]; let t=0;
+  for(const raw of (str||"").replace(/[|｜]/g," ").split(/\s+/)){
+    if(!raw) continue;
+    const [p,ds]=raw.split(/[:：]/); const d=ds==null?1:parseFloat(ds);
+    if(!(d>0)){errs.push(raw);continue;}
+    if(p==="0"||p==="-"){t+=d;continue;}
+    const ms=p.split("+").map(x=>n2m(x,defOct));
+    if(ms.some(x=>x==null)){errs.push(raw);t+=d;continue;}
+    for(const m of ms) notes.push({m,s:t,d,h});
+    t+=d;
+  }
+  return {notes,len:t,errs};
+}
+function compile(ex){
+  const r=parseVoice(ex.rh,"r",4), l=parseVoice(ex.lh,"l",3);
+  const notes=[...r.notes,...l.notes].sort((a,b)=>a.s-b.s||a.m-b.m);
+  return {notes,len:Math.max(r.len,l.len),errs:[...r.errs,...l.errs]};
+}
+const songNotes=()=>compile(S.song).notes;
+// 自检：解析器基本行为
+console.assert(n2m("C",4)===60&&n2m("Bb3",4)===58&&n2m("F#5",4)===78,"n2m");
+console.assert(compile({rh:"C D:2 0 E+G",lh:"C3:4"}).len===5&&compile({rh:"C D:2 0 E+G"}).notes.length===4,"parse");
+
+/* ===================== 声音 ===================== */
+let AC=null, master=null;
+function ac(){
+  if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createDynamicsCompressor();const g=AC.createGain();g.gain.value=.7;master.connect(g);g.connect(AC.destination);}
+  if(AC.state==="suspended") AC.resume();
+  return AC;
+}
+function tone(m,dur=.5,vel=.8,when=0){
+  const a=ac(), t0=a.currentTime+when, f=440*2**((m-69)/12), end=t0+Math.max(dur,.12);
+  const g=a.createGain(), peak=.32*vel*(m<48?1.25:1);
+  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(peak,t0+.006);
+  g.gain.setTargetAtTime(peak*.25,t0+.006,.35); g.gain.setTargetAtTime(0,end,.07);
+  const o1=a.createOscillator(); o1.type="triangle"; o1.frequency.value=f;
+  const o2=a.createOscillator(); o2.type="sine"; o2.frequency.value=f*2;
+  const g2=a.createGain(); g2.gain.value=.22;
+  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(master);
+  o1.start(t0); o2.start(t0); o1.stop(end+.5); o2.stop(end+.5);
+}
+function tick(strong){
+  const a=ac(), t0=a.currentTime, o=a.createOscillator(), g=a.createGain();
+  o.frequency.value=strong?1600:1100; g.gain.setValueAtTime(.18,t0); g.gain.exponentialRampToValueAtTime(.001,t0+.05);
+  o.connect(g); g.connect(master); o.start(t0); o.stop(t0+.06);
+}
+
+/* ===================== 键盘画布 ===================== */
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function makeBoard(canvas,{fallH=0,keyH=110,onPress}){
+  const B={canvas,fallH,keyH,lo:48,hi:84,lay:null,W:0,onPress,flash:new Map(),hint:new Set(),labels:true};
+  B.setRange=(lo,hi)=>{B.lo=lo;B.hi=hi;B.resize();};
+  B.resize=()=>{
+    const wrap=canvas.parentElement; const whites=[]; for(let m=B.lo;m<=B.hi;m++) if(!isBlack(m)) whites.push(m);
+    const W=Math.max(wrap.clientWidth-20,whites.length*24); B.W=W;
+    const ww=W/whites.length, pos={};
+    whites.forEach((m,i)=>pos[m]={x:i*ww,w:ww,b:false});
+    for(let m=B.lo;m<=B.hi;m++) if(isBlack(m)&&pos[m-1]) pos[m]={x:pos[m-1].x+ww*.68,w:ww*.64,b:true};
+    B.lay={whites,ww,pos};
+    const H=B.fallH+B.keyH, dpr=window.devicePixelRatio||1;
+    canvas.width=W*dpr; canvas.height=H*dpr; canvas.style.width=W+"px"; canvas.style.height=H+"px";
+    canvas.getContext("2d").setTransform(dpr,0,0,dpr,0,0);
+  };
+  B.hit=(x,y)=>{
+    if(y<B.fallH) return null; const ky=y-B.fallH, {pos}=B.lay;
+    if(ky<B.keyH*.62) for(const m in pos){const p=pos[m]; if(p.b&&x>=p.x&&x<=p.x+p.w) return +m;}
+    for(const m in pos){const p=pos[m]; if(!p.b&&x>=p.x&&x<p.x+p.w) return +m;}
+    return null;
+  };
+  B.press=(m,src)=>{ if(m==null) return; tone(m,.45); B.flash.set(m,performance.now()+260); B.onPress?.(m,src); };
+  canvas.addEventListener("pointerdown",e=>{const r=canvas.getBoundingClientRect(); B.press(B.hit(e.clientX-r.left,e.clientY-r.top),"screen");});
+  B.drawKeys=(ctx,lit)=>{
+    const {pos}=B.lay, y0=B.fallH, H=B.keyH, now=performance.now(), rh=css("--rh"), lh=css("--lh");
+    const col=m=>{ if((B.flash.get(m)||0)>now) return "#7FD4A0"; const l=lit?.get(m); if(l) return l==="l"?lh:rh; return null; };
+    ctx.font="600 11px "+css("--f-mono");
+    ctx.textAlign="center";
+    for(const m of B.lay.whites){const p=pos[m];
+      ctx.fillStyle=col(m)||"#FAF8F2"; ctx.fillRect(p.x+.5,y0,p.w-1,H);
+      if(B.hint.has(m)){ctx.strokeStyle=css("--rh");ctx.lineWidth=3;ctx.strokeRect(p.x+2,y0+2,p.w-4,H-4);}
+      if(B.labels||m%12===0){ctx.fillStyle=m%12===0?"#137A86":"#7A7F88"; ctx.fillText(m%12===0?nameOf(m):NAMES[m%12],p.x+p.w/2,y0+H-8);}
+    }
+    for(const m in pos){const p=pos[m]; if(!p.b) continue;
+      ctx.fillStyle=col(+m)||"#1A1B20"; ctx.fillRect(p.x,y0,p.w,H*.62);
+      if(B.hint.has(+m)){ctx.strokeStyle=css("--rh");ctx.lineWidth=3;ctx.strokeRect(p.x+1.5,y0+1.5,p.w-3,H*.62-3);}
+    }
+  };
+  return B;
+}
+
+/* ===================== 练琴房播放器 ===================== */
+const P={exKey:null,ex:null,notes:[],len:0,bpm:72,speed:.7,mode:"demo",hand:"r",metro:true,
+  playing:false,tb:-4,last:0,next:0,groups:[],gi:0,lit:new Map(),hits:0,miss:0,board:null,raf:0,finished:null};
+function allExercises(){
+  const list=[];
+  for(let lv=1;lv<=NLV;lv++){ if(lv>S.cur) break; L[lv].ex.forEach((e,i)=>list.push({key:lv+"-"+i,lv,label:`第 ${lv} 关 · ${e.n}`,ex:e})); }
+  list.push({key:"song",lv:0,label:"我的曲谱 · "+(S.song.name||"未命名"),ex:S.song});
+  return list;
+}
+function loadEx(key){
+  const item=allExercises().find(x=>x.key===key)||allExercises()[0];
+  stop(); P.exKey=item.key; P.ex=item.ex; P.lv=item.lv;
+  const c=compile(item.ex); P.notes=c.notes; P.len=c.len; P.bpm=+item.ex.bpm||72;
+  const hasR=P.notes.some(n=>n.h==="r"), hasL=P.notes.some(n=>n.h==="l");
+  if(P.hand==="r"&&!hasR) P.hand="l"; if(P.hand==="l"&&!hasL) P.hand="r";
+  let lo=48,hi=83;
+  if(P.notes.length){const ms=P.notes.map(n=>n.m); lo=12*Math.floor(Math.min(...ms)/12); hi=12*Math.floor(Math.max(...ms)/12)+11; if(hi-lo<23) hi+=12; hi=Math.min(hi+1,108);}
+  if(P.board){P.board.setRange(lo,hi);}
+  reset(); return c;
+}
+const userHand=n=>P.mode==="wait"&&(P.hand==="both"||P.hand===n.h);
+function reset(){
+  P.tb=-4; P.sec=0; P.next=0; P.gi=0; P.hits=0; P.miss=0; P.lit.clear(); P.finished=null; P.lastBeat=-99;
+  const g=new Map(); for(const n of P.notes) if(userHand(n)){ if(!g.has(n.s)) g.set(n.s,{s:n.s,ms:new Set(),hit:new Set()}); g.get(n.s).ms.add(n.m); }
+  P.groups=[...g.values()].sort((a,b)=>a.s-b.s);
+  P.board&&(P.board.hint=new Set());
+}
+let wake=null;
+function play(){ ac(); if(P.finished) reset(); P.playing=true; P.last=performance.now(); if(P.groups[P.gi]&&!P.groups[P.gi].armed) P.groups[P.gi].armed=P.last;
+  try{navigator.wakeLock?.request("screen").then(w=>wake=w).catch(()=>{});}catch(e){} hud(); }
+function stop(){ if(P.playing) save(); P.playing=false; try{wake?.release();}catch(e){} wake=null; hud(); }
+function advanceGroup(now){ const g=P.groups[P.gi]; if(g.waitFrom) g.waited=(now-g.waitFrom)/1000; P.gi++; const n=P.groups[P.gi]; if(n) n.armed=now+60; }
+function frame(now){
+  P.raf=requestAnimationFrame(frame);
+  if(MIC.on) micFrame(now);
+  if(!P.board||tab!=="room") return;
+  const dt=Math.min(.1,(now-P.last)/1000); P.last=now;
+  if(P.playing){
+    let nt=P.tb+dt*P.bpm/60*P.speed;
+    const g=P.groups[P.gi];
+    if(P.mode==="wait"&&g&&nt>=g.s){ nt=g.s; if(!g.waitFrom) g.waitFrom=now; }
+    P.sec+=dt; const dd=S.days[today()]||(S.days[today()]={q:[]}); dd.sec=(dd.sec||0)+dt;
+    while(P.next<P.notes.length&&P.notes[P.next].s<nt){
+      const n=P.notes[P.next++];
+      if(!userHand(n)){ tone(n.m,n.d*60/P.bpm/P.speed,(n.h==="l"?.6:.8)*(MIC.on&&P.mode==="wait"?.3:1)); P.lit.set(n.m,{until:n.s+n.d,h:n.h}); }
+    }
+    const beat=Math.floor(nt);
+    if(beat>P.lastBeat){ P.lastBeat=beat; if(P.metro||beat<0) tick(((beat%4)+4)%4===0); }
+    P.tb=nt;
+    if(MIC.on&&P.mode==="wait"&&g&&P.tb>=g.s-.75&&MIC.onset>(g.armed||0)){
+      let ch=false; for(const m of g.ms) if(!g.hit.has(m)&&present(m)){g.hit.add(m);P.hits++;P.board.flash.set(m,now+260);ch=true;}
+      if(g.hit.size===g.ms.size) advanceGroup(now); if(ch) hud();
+    }
+    for(const [m,v] of P.lit) if(v.until<=P.tb) P.lit.delete(m);
+    P.board.hint=new Set(P.mode==="wait"&&g&&P.tb>=g.s-.75?[...g.ms].filter(m=>!g.hit.has(m)):[]);
+    if(P.tb>=P.len+.5&&P.gi>=P.groups.length) finish();
+  }
+  draw();
+}
+function onKey(m){
+  if(P.mode!=="wait"||!P.playing) return;
+  const g=P.groups[P.gi]; if(!g) return;
+  if(g.ms.has(m)&&P.tb>=g.s-.75){ if(!g.hit.has(m)){g.hit.add(m);P.hits++;} if(g.hit.size===g.ms.size) advanceGroup(performance.now()); }
+  else P.miss++;
+  hud();
+}
+function finish(){
+  P.playing=false;
+  const total=P.groups.reduce((a,g)=>a+g.ms.size,0);
+  const acc=P.mode==="wait"&&total?Math.round(100*P.hits/Math.max(total,P.hits+P.miss)):null;
+  const by={}; for(const g of P.groups) if(g.waited>1.2){const b=Math.floor(g.s/4)+1; by[b]=(by[b]||0)+g.waited;}
+  const slow=Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([b,w])=>[+b,Math.round(w*10)/10]);
+  P.finished={acc,slow};
+  if(acc!=null){ S.log=[{d:today(),n:P.exKey==="song"?(S.song.name||"我的曲谱"):(P.ex.n||""),acc,sec:Math.round(P.sec),slow,mic:MIC.on},...(S.log||[])].slice(0,60); }
+  if(acc!=null){
+    const k=P.exKey; S.done[k]=Math.max(S.done[k]||0,acc); save();
+    if(P.lv===S.cur||(P.exKey==="song"&&L[S.cur].useSong)) autoQ("play");
+  }
+  hud();
+}
+function draw(){
+  const B=P.board, cv=B.canvas, ctx=cv.getContext("2d"), W=B.W, F=B.fallH, ppb=F/4.5, {pos}=B.lay;
+  ctx.fillStyle=css("--stage"); ctx.fillRect(0,0,W,F);
+  // 拍线
+  for(let b=Math.ceil(P.tb);b<P.tb+5;b++){const y=F-(b-P.tb)*ppb; if(y<0) continue;
+    ctx.fillStyle=b%4===0?"rgba(255,255,255,.16)":"rgba(255,255,255,.05)"; ctx.fillRect(0,y,W,b%4===0?2:1);}
+  // C 键竖线
+  ctx.fillStyle="rgba(255,255,255,.04)"; for(const m of B.lay.whites) if(m%12===0) ctx.fillRect(pos[m].x,0,1,F);
+  const rh=css("--rh"), lh=css("--lh");
+  ctx.font="600 10px "+css("--f-mono"); ctx.textAlign="center";
+  for(const n of P.notes){
+    if(n.s>P.tb+5) break; if(n.s+n.d<P.tb-.05) continue;
+    const p=pos[n.m]; if(!p) continue;
+    const yb=F-(n.s-P.tb)*ppb, yt=Math.max(0,F-(n.s+n.d-P.tb)*ppb+2);
+    if(yb<=0) continue; const ybc=Math.min(yb,F);
+    const mine=userHand(n);
+    ctx.globalAlpha=P.mode==="wait"&&!mine?.4:1;
+    ctx.fillStyle=n.h==="l"?lh:rh;
+    const x=p.x+(p.b?0:2), w=p.w-(p.b?0:4);
+    ctx.beginPath(); ctx.roundRect?ctx.roundRect(x,yt,w,ybc-yt,4):ctx.rect(x,yt,w,ybc-yt); ctx.fill();
+    if(ybc-yt>14&&w>11){ctx.fillStyle="#0B1A1C"; ctx.fillText(NAMES[n.m%12],x+w/2,ybc-5);}
+  }
+  ctx.globalAlpha=1;
+  if(P.tb<0&&P.playing){ctx.fillStyle="rgba(255,255,255,.85)"; ctx.font="40px "+css("--f-display"); ctx.fillText(String(Math.ceil(-P.tb)),W/2,F/2);}
+  if(P.mode==="wait"&&P.playing&&P.groups[P.gi]&&P.tb>=P.groups[P.gi].s){ctx.fillStyle="rgba(255,255,255,.7)";ctx.font="13px "+css("--f-body");const gw=P.groups[P.gi]; const stuck=gw.waitFrom&&performance.now()-gw.waitFrom>3000;
+    ctx.fillText(stuck?"要按："+[...gw.ms].filter(m=>!gw.hit.has(m)).map(nameOf).join(" + "):"等你按下亮框的键…",W/2,18);}
+  const lit=new Map(); for(const [m,v] of P.lit) lit.set(m,v.h);
+  B.drawKeys(ctx,lit);
+}
+function hud(){
+  const el=document.getElementById("hud"); if(!el) return;
+  const pb=document.getElementById("playBtn"); if(pb) pb.textContent=P.playing?"暂停":"开始";
+  const bar=Math.max(0,Math.floor(P.tb/4)+1), tot=Math.ceil(P.len/4);
+  let s=`<span>小节 <b class="mono">${Math.min(bar,tot)}/${tot}</b></span><span>速度 <b class="mono">${Math.round(P.bpm*P.speed)} BPM</b></span>`;
+  if(P.mode==="wait") s+=`<span>按对 <b class="mono">${P.hits}</b></span><span>按错 <b class="mono">${P.miss}</b></span>`;
+  if(P.finished) s+= P.finished.acc!=null?`<span><b>完成！准确率 ${P.finished.acc}%</b>${P.finished.acc>=90?" · 很稳":P.finished.acc>=70?" · 再来一遍会更好":" · 降低速度再试"}</span>`+(P.finished.slow.length?`<span>卡得最久：${P.finished.slow.map(([b,w])=>`第 ${b} 小节 ${w} 秒`).join("、")}。把这几小节单独慢练 5 遍再整首来。</span>`:""):`<span><b>示范播放完毕</b>，换成等待模式自己弹一遍</span>`;
+  el.innerHTML=s;
+}
+// 电脑键盘：A W S E D F T G Y H U J K O L P ; → C4…E5
+const KEYMAP={a:0,w:1,s:2,e:3,d:4,f:5,t:6,g:7,y:8,h:9,u:10,j:11,k:12,o:13,l:14,p:15,";":16};
+let kbOct=0;
+document.addEventListener("keydown",e=>{
+  if(e.repeat||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  const k=e.key.toLowerCase();
+  if(tab==="room"&&k===" "){e.preventDefault(); P.playing?stop():play(); return;}
+  if(k==="z"){kbOct=Math.max(-2,kbOct-1);toast("电脑键盘八度 "+(4+kbOct));return;}
+  if(k==="x"){kbOct=Math.min(2,kbOct+1);toast("电脑键盘八度 "+(4+kbOct));return;}
+  if(k in KEYMAP){const m=60+12*kbOct+KEYMAP[k]; if(tab==="room"&&P.board) P.board.press(m,"kbd"); else if(tab==="quiz"&&QB) QB.press(m,"kbd");}
+});
+// 电子琴通过 USB 接电脑时可以直接用（浏览器和页面允许才行）
+let midiNote="";
+try{ navigator.requestMIDIAccess?.().then(acc=>{
+  const bind=()=>{ let n=0; acc.inputs.forEach(inp=>{ n++; inp.onmidimessage=ev=>{ const [st,m,v]=ev.data; if((st&0xf0)===0x90&&v>0){ if(tab==="room"&&P.board){P.board.flash.set(m,performance.now()+260);onKey(m);} else if(tab==="quiz"&&QB){QB.flash.set(m,performance.now()+260);QB.onPress(m,"midi");} } }; }); midiNote=n?`已连接 ${n} 个 MIDI 设备，直接弹你的电子琴就能跟弹`:""; const el=document.getElementById("midiNote"); if(el) el.textContent=midiNote; };
+  bind(); acc.onstatechange=bind;
+}).catch(()=>{}); }catch(e){}
+
+/* ===================== 麦克风听音 ===================== */
+// 已知要弹哪些音，所以只检查"这几个音在不在"：比较目标音（含 2、3 次谐波）和左右半音的能量，再要求有新的按键起音
+const MIC={on:false,an:null,fd:null,td:null,slow:0,onset:0,floor:-100,heard:null,sens:20,msg:"",hudTxt:""};
+try{const v=+localStorage.getItem(KEY+"-sens"); if(v) MIC.sens=v;}catch(e){}
+const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
+async function micToggle(){
+  if(MIC.on){ MIC.stream.getTracks().forEach(t=>t.stop()); MIC.on=false; MIC.heard=null; MIC.msg=""; render(); return; }
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const a=ac(), src=a.createMediaStreamSource(st), an=a.createAnalyser(); an.fftSize=8192; an.smoothingTimeConstant=0; src.connect(an);
+    Object.assign(MIC,{on:true,stream:st,an,fd:new Float32Array(an.frequencyBinCount),td:new Float32Array(an.fftSize),msg:"听音已开启：弹一个音，右边会显示听到了什么。手机放近琴的喇叭，环境安静一点更准。"});
+  }catch(e){
+    MIC.msg=inFrame?"这个页面嵌在 claude.ai 里，浏览器不让它用麦克风。按下面「放到手机或平板上听音练琴」的步骤，用你自己的网址打开就能听音。":"麦克风没有打开："+(e.name==="NotAllowedError"?"你或浏览器拒绝了权限，在浏览器的网站设置里允许麦克风再试。":(e.message||e.name));
+  }
+  render();
+}
+function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
+function noteScore(m){ const f=440*2**((m-69)/12); return (binDb(f)+binDb(2*f)+binDb(3*f))/3; }
+function present(m){ const sc=noteScore(m); return sc>MIC.floor+MIC.sens&&sc>noteScore(m-1)+3&&sc>noteScore(m+1)+3; }
+function micFrame(now){
+  MIC.an.getFloatTimeDomainData(MIC.td); let s=0; const n=1024, td=MIC.td;
+  for(let i=td.length-n;i<td.length;i++) s+=td[i]*td[i];
+  const rms=Math.sqrt(s/n);
+  if(rms>.006&&rms>MIC.slow*1.6) MIC.onset=now;
+  MIC.slow=MIC.slow*.9+rms*.1;
+  MIC.an.getFloatFrequencyData(MIC.fd);
+  let fl=0; for(let i=10;i<410;i++) fl+=MIC.fd[i]; MIC.floor=fl/400;
+  let best=null,bs=-1e9; if(rms>.004) for(let m=36;m<=96;m++) if(present(m)){const sc=noteScore(m); if(sc>bs){bs=sc;best=m;}}
+  MIC.heard=best;
+  const el=document.getElementById("micHud"); if(el){ const t=`听到：${best!=null?nameOf(best):"—"}  音量 ${"▮".repeat(Math.min(8,Math.round(rms*120)))}`; if(t!==MIC.hudTxt){MIC.hudTxt=t; el.textContent=t;} }
+}
+
+/* ===================== 认键游戏 ===================== */
+let QB=null;
+const QMODES={white:"白键",black:"黑键",jianpu:"简谱",staff:"五线谱",chord:"和弦"};
+const CHORDS={C:[0,4,7],Dm:[2,5,9],Em:[4,7,11],F:[5,9,0],G:[7,11,2],Am:[9,0,4]};
+const Q={mode:"white",i:0,score:0,cur:null,sel:new Set(),locked:false,over:false};
+const rnd=a=>a[Math.floor(Math.random()*a.length)];
+function qNew(){
+  Q.sel=new Set(); Q.locked=false;
+  const whites4=[60,62,64,65,67,69,71], blacks=[61,63,66,68,70];
+  if(Q.mode==="white") Q.cur={m:rnd([...whites4,...whites4.map(x=>x-12),72])};
+  if(Q.mode==="black") Q.cur={m:rnd([...blacks,...blacks.map(x=>x-12)])};
+  if(Q.mode==="staff") Q.cur={m:rnd([60,62,64,65,67,69,71,72,74,76,77,79,81])};
+  if(Q.mode==="jianpu"){const deg=Math.floor(Math.random()*7), oct=rnd([3,4,4,5]); Q.cur={deg,oct,m:12*(oct+1)+[0,2,4,5,7,9,11][deg]};}
+  if(Q.mode==="chord"){const n=rnd(Object.keys(CHORDS)); Q.cur={name:n,pcs:CHORDS[n]};}
+  if(QB) QB.hint=new Set(["white","black"].includes(Q.mode)?[Q.cur.m]:[]);
+  renderQuiz();
+}
+function qAnswer(ok,reveal){
+  if(Q.locked) return; Q.locked=true;
+  if(ok) Q.score++;
+  const fb=document.getElementById("qfb"); fb.className="fb "+(ok?"ok":"no"); fb.textContent=(ok?"对了！":"不对，正确答案是 ")+(ok?"":reveal);
+  if(Q.cur.m!=null) setTimeout(()=>tone(Q.cur.m,.6),ok?0:150);
+  else Q.cur.pcs.forEach(pc=>tone(60+pc+(pc<Q.cur.pcs[0]?12:0),.8));
+  setTimeout(()=>{ Q.i++; if(Q.i>=10){ Q.over=true; QB&&(QB.hint=new Set());
+      S.quizBest[Q.mode]=Math.max(S.quizBest[Q.mode]||0,Q.score); save();
+      if(Q.score>=8&&Q.mode===L[S.cur].quiz) autoQ("quiz");
+      renderQuiz(); } else qNew(); },ok?650:1500);
+}
+function qPress(m){
+  if(Q.over||Q.locked||!Q.cur) return;
+  if(Q.mode==="jianpu") qAnswer(m===Q.cur.m,nameOf(Q.cur.m));
+  if(Q.mode==="chord"){ Q.sel.has(m)?Q.sel.delete(m):Q.sel.add(m); QB.hint=new Set(Q.sel); const el=document.getElementById("qsel"); if(el) el.textContent=[...Q.sel].sort((a,b)=>a-b).map(nameOf).join(" ")||"还没选"; }
+}
+function qChordCheck(){
+  const pcs=new Set([...Q.sel].map(m=>m%12)), want=new Set(Q.cur.pcs);
+  qAnswer(pcs.size===want.size&&[...want].every(x=>pcs.has(x)),Q.cur.pcs.map(pc=>NAMES[pc]).join(" "));
+}
+function staffSVG(m){
+  const letter=[0,0,1,1,2,3,3,4,4,5,5,6][m%12], idx=(Math.floor(m/12)-1)*7+letter, gap=12, bottom=96;
+  const y=bottom-(idx-30)*gap/2, x=150, ink="currentColor";
+  let s=`<svg viewBox="0 0 260 130" width="260" height="130" role="img" aria-label="五线谱上的一个音符">`;
+  for(let i=0;i<5;i++) s+=`<line x1="10" x2="250" y1="${bottom-i*gap}" y2="${bottom-i*gap}" stroke="${ink}" stroke-width="1.2"/>`;
+  s+=`<text x="14" y="${bottom+8}" font-size="62" font-family="'Noto Music',serif" fill="${ink}">𝄞</text>`;
+  for(let li=28;li>=idx;li-=2) s+=`<line x1="${x-16}" x2="${x+16}" y1="${bottom-(li-30)*gap/2}" y2="${bottom-(li-30)*gap/2}" stroke="${ink}" stroke-width="1.2"/>`;
+  for(let li=40;li<=idx;li+=2) s+=`<line x1="${x-16}" x2="${x+16}" y1="${bottom-(li-30)*gap/2}" y2="${bottom-(li-30)*gap/2}" stroke="${ink}" stroke-width="1.2"/>`;
+  s+=`<ellipse cx="${x}" cy="${y}" rx="8" ry="6" transform="rotate(-20 ${x} ${y})" fill="${ink}"/></svg>`;
+  return s;
+}
+
+/* ===================== 视图 ===================== */
+const TABS=[["today","今日任务"],["map","关卡地图"],["room","练琴房"],["quiz","认键游戏"],["coach","AI 教练"],["me","我的进度"]];
+let tab="today", mapSel=null;
+try{const t=localStorage.getItem(KEY+"-tab"); if(t&&TABS.some(x=>x[0]===t)) tab=t;}catch(e){}
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function toast(msg){const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,2200);}
+function renderRank(){
+  const lv=S.cur, w=worldOf(lv), x=levelXP(lv), pct=Math.min(100,Math.round(100*x/w.gate)), fin=!!S.boss[NLV];
+  $("rank").innerHTML=`<div class="lvbadge">${lv}<small>${rankName()}</small></div>
+  <div><div class="muted small">${w.n}</div><h1>${fin?"毕业：你弹完了《失眠的夜》":"第 "+lv+" 关 · "+L[lv].t}</h1>
+  <div class="bar" aria-label="本关经验"><i style="width:${fin?100:pct}%"></i></div>
+  <div class="stats"><span>本关 <b class="mono">${x}/${w.gate}</b> XP${x>=w.gate&&!S.boss[lv]?" · BOSS 已出现":""}</span><span>总经验 <b class="mono">${totalXP()}</b></span><span>连续 <b class="mono">${streak()}</b> 天</span><span>${syncNote}</span></div></div>`;
+}
+function renderTabs(){
+  $("tabs").innerHTML=TABS.map(([k,n])=>`<button role="tab" aria-selected="${k===tab}" data-tab="${k}">${n}</button>`).join("");
+}
+function lessonBlock(lv,open){
+  const Lv=L[lv];
+  return `<details ${open?"open":""}><summary>本关知识 · ${Lv.t}</summary><div class="lesson" style="margin-top:10px">${Lv.lesson}</div></details>`;
+}
+function exList(lv){
+  const Lv=L[lv];
+  if(Lv.useSong) return `<p class="small">这一关的练习曲是「我的曲谱」：<button class="btn" data-go="song">去练琴房</button>${S.done.song!=null?` <span class="chip">最好成绩 ${S.done.song}%</span>`:""}</p>`;
+  return `<div class="row">${Lv.ex.map((e,i)=>`<button class="btn" data-go="${lv}-${i}">♪ ${esc(e.n)}${S.done[lv+"-"+i]!=null?` · ${S.done[lv+"-"+i]}%`:""}</button>`).join("")}</div>`;
+}
+function bossBlock(lv){
+  const Lv=L[lv], chk=S.bossChk[lv]||[], all=Lv.boss.c.every((_,i)=>chk[i]);
+  return `<div class="boss stack"><div><span class="chip xp">BOSS 关 · 打败得 ${BOSS_XP} XP</span><h3 style="margin-top:6px">${Lv.boss.t}</h3><p class="small muted">全部做到再勾。骗自己没有用，琴声不会说谎。</p></div>
+  <div>${Lv.boss.c.map((c,i)=>`<label><input type="checkbox" data-boss="${i}" ${chk[i]?"checked":""}><span>${c}</span></label>`).join("")}</div>
+  <div><button class="btn pri" id="bossWin" ${all?"":"disabled"}>${lv===NLV?"完成终极挑战":"挑战成功，进入下一关"}</button></div></div>`;
+}
+function vToday(){
+  const lv=S.cur, Lv=L[lv], w=worldOf(lv), x=levelXP(lv);
+  if(S.boss[NLV]) return `<div class="panel stack"><h2>你做到了</h2><p>15 关全部通关。现在你会认键、看谱、两只手弹旋律和伴奏，还自己拿下了《失眠的夜》。</p><p>下一步：选一首新歌，从第 13 关的方法重新开始：拿谱 → 分段 → 分手 → 合手。「我的曲谱」可以换成新歌，练琴房和 AI 教练照样能用。</p></div>`;
+  const qs=QUESTS.map(q=>{
+    const on=hasQ(q.id), min=q.id==="real"?realMin(lv):q.min;
+    const d=q.id==="real"?`在电子琴上练本关的练习曲 ${min} 分钟。先分手、慢速，错的地方单独拎出来练。`:q.d;
+    return `<div class="quest ${on?"done":""}"><input type="checkbox" id="q-${q.id}" data-q="${q.id}" ${on?"checked":""}><label for="q-${q.id}"><div class="q-t">${q.t}</div><div class="small muted">${d}</div></label><div class="row" style="justify-content:flex-end"><span class="chip">${min} 分</span><span class="chip xp">+${q.xp}</span></div></div>`;
+  }).join("");
+  return `<div class="stack">
+  <div class="panel stack"><div><span class="chip">本关目标</span><p style="margin-top:6px;font-size:17px">${Lv.goal}</p></div>${lessonBlock(lv,!hasQ("learn"))}<div><div class="small muted" style="margin-bottom:6px">本关练习曲（点了直接去练琴房）</div>${exList(lv)}</div></div>
+  <div class="panel"><div class="row" style="justify-content:space-between;margin-bottom:4px"><h3>今日任务</h3><span class="small muted">每天约 ${QUESTS.reduce((a,q)=>a+(q.id==="real"?realMin(lv):q.min),0)} 分钟 · 认键游戏推荐「${QMODES[Lv.quiz]}」模式</span></div>${qs}</div>
+  ${x>=w.gate?bossBlock(lv):`<div class="panel small muted">再攒 <b class="mono">${w.gate-x}</b> XP，本关 BOSS 就会出现。每天把任务做满大约 90 XP。</div>`}
+  </div>`;
+}
+function vMap(){
+  const sel=mapSel||S.cur;
+  const worlds=WORLDS.map(w=>`<section class="world"><h3>${w.n}</h3><div class="nodes">${w.lv.map(lv=>{
+    const st=S.boss[lv]?"clear":lv===S.cur?"now":lv>S.cur?"locked":"";
+    return `<button class="node ${st}" data-lv="${lv}" ${lv>S.cur?'aria-disabled="true"':""}><span class="num">第 ${lv} 关</span><b>${L[lv].t}</b></button>`;}).join("")}</div></section>`).join("");
+  const Lv=L[sel];
+  return `<div class="stack">${worlds}
+  <div class="panel stack"><div><span class="chip">第 ${sel} 关</span><h2 style="margin-top:6px">${Lv.t}</h2><p class="muted">${Lv.goal}</p></div>
+  <div class="lesson">${Lv.lesson}</div><div>${exList(sel)}</div>
+  <div class="small"><b>BOSS · ${Lv.boss.t}：</b>${Lv.boss.c.join("；")}</div></div></div>`;
+}
+function vRoom(){
+  const items=allExercises();
+  const tip=P.ex?.tip?`<p class="small muted">提示：${esc(P.ex.tip)}</p>`:"";
+  const errs=compile(S.song).errs;
+  return `<div class="stack">
+  <div class="panel stack">
+    <div class="ctrl">
+      <label>练习曲<select id="exSel">${items.map(x=>`<option value="${x.key}" ${x.key===P.exKey?"selected":""}>${esc(x.label)}</option>`).join("")}</select></label>
+      <label>模式<select id="modeSel"><option value="demo" ${P.mode==="demo"?"selected":""}>示范：电脑弹，你看和听</option><option value="wait" ${P.mode==="wait"?"selected":""}>等待模式：你按对了才往下走</option></select></label>
+      <label>你弹哪只手（等待模式）<select id="handSel"><option value="r" ${P.hand==="r"?"selected":""}>只练右手</option><option value="l" ${P.hand==="l"?"selected":""}>只练左手</option><option value="both" ${P.hand==="both"?"selected":""}>双手都练</option></select></label>
+      <label>速度 <span class="mono" id="spdTxt">${Math.round(P.speed*100)}%</span><input type="range" id="spd" min="30" max="130" step="5" value="${Math.round(P.speed*100)}"></label>
+    </div>
+    <div class="row"><button class="btn pri" id="playBtn">开始</button><button class="btn" id="resetBtn">从头</button><button class="btn ${P.metro?"on":""}" id="metroBtn">节拍器 ${P.metro?"开":"关"}</button><button class="btn ${P.board?.labels!==false?"on":""}" id="lblBtn">键名 ${P.board?.labels!==false?"显示":"隐藏"}</button>
+      <span class="legend"><span><i style="background:var(--rh)"></i>右手</span><span><i style="background:var(--lh)"></i>左手</span></span></div>
+    ${tip}
+    <div class="row"><button class="btn ${MIC.on?"on":""}" id="micBtn">听音 ${MIC.on?"开":"关"}</button><label class="small muted" style="display:flex;gap:6px;align-items:center">门槛<input type="range" id="sens" min="8" max="36" value="${MIC.sens}" style="width:110px" aria-label="听音门槛：越小越灵敏"></label><span class="small mono" id="micHud"></span></div>
+    ${MIC.msg?`<p class="small" style="color:var(--muted)">${esc(MIC.msg)}</p>`:""}
+    <div class="hud" id="hud"></div>
+  </div>
+  <div class="stage-wrap"><canvas id="stage" tabindex="0" aria-label="下落音符和键盘：点击琴键发声"></canvas></div>
+  <p class="small muted">怎么用：点屏幕上的琴键，或者用电脑键盘 <span class="kbd">A W S E D F T G Y H U J K</span> 弹 C4 到 C5（<span class="kbd">Z</span>/<span class="kbd">X</span> 换八度，空格 开始/暂停）。最好的练法是：示范听两遍 → 在电子琴上跟着弹 → 等待模式验收。<span id="midiNote">${midiNote}</span></p>
+  <details class="panel"><summary>放到手机或平板上听音练琴</summary><div class="lesson small" style="margin-top:10px">
+    <p>开了「听音」，等待模式会用麦克风听你弹的是不是亮着的键：弹对了才往下走，弹完告诉你哪几小节卡得最久，练琴时间自动记到「我的进度」。</p>
+    <p><b>为什么这里用不了：</b>claude.ai 里的页面不能用麦克风。同一个页面放到你自己的网址上就可以用。</p>
+    <ol><li>用 GitHub Pages 打开这个页面的独立版本（Claude 会把网址告诉你），把网址加到手机桌面。</li><li>手机或平板放在琴的谱架上，离琴的喇叭近一点。</li><li>点「听音」，允许麦克风。先随便弹几个音，看「听到：」显示得对不对。听不到就把门槛调小，乱跳就调大。</li><li>选等待模式开始练。听音开着时，电脑弹的另一只手会自动变小声，免得被误听。</li></ol>
+    <p class="muted">如果你的电子琴有 USB 口，用线接到电脑或安卓手机的 Chrome，会比麦克风更准（自动识别 MIDI）。独立版本的进度只存在那台设备的浏览器里，和这里的进度不互通。</p>
+  </div></details>
+  <div class="panel stack" id="songPanel">
+    <div><h3>我的曲谱</h3><p class="small muted">第 13–15 关在这里录《失眠的夜》。写法：<span class="kbd">C D E:2</span> = C、D 各 1 拍，E 2 拍；<span class="kbd">F#</span> <span class="kbd">Bb</span> 是黑键；<span class="kbd">A3+C4+E4:4</span> = 和弦按 4 拍；<span class="kbd">0:1</span> = 休止 1 拍；<span class="kbd">|</span> 是小节线（只是好看）。右手默认第 4 八度，左手默认第 3 八度。看不懂简谱怎么转？用 AI 教练的「简谱转练琴格式」。</p></div>
+    <div class="ctrl"><label>曲名<input type="text" id="sgName" value="${esc(S.song.name||"")}"></label><label>速度（BPM）<input type="number" id="sgBpm" min="30" max="200" value="${+S.song.bpm||70}"></label></div>
+    <label class="small muted">右手<textarea id="sgRh" placeholder="例如：E:0.5 G G:0.5 0:0.5 A G:0.5 | ...">${esc(S.song.rh||"")}</textarea></label>
+    <label class="small muted">左手<textarea id="sgLh" placeholder="例如：A1+A2:1 A1+A2:1 ...">${esc(S.song.lh||"")}</textarea></label>
+    <label class="small muted">备注（分段、和弦、卡住的地方）<textarea id="sgMemo" style="font-family:var(--f-body)">${esc(S.song.memo||"")}</textarea></label>
+    <div class="row"><button class="btn pri" id="sgSave">保存并载入练琴房</button><span class="small ${errs.length?"":"muted"}" style="color:${errs.length?"var(--bad)":""}">${errs.length?"这些写法看不懂：<span class=mono>"+esc(errs.slice(0,6).join("  "))+"</span>":"共 "+songNotes().length+" 个音"}</span></div>
+  </div></div>`;
+}
+function vQuiz(){
+  const rec=L[S.cur].quiz;
+  return `<div class="stack">
+  <div class="row">${Object.entries(QMODES).map(([k,n])=>`<button class="btn ${Q.mode===k?"on":""}" data-qm="${k}">${n}${k===rec?" · 本关推荐":""}${S.quizBest[k]!=null?` · 最佳 ${S.quizBest[k]}`:""}</button>`).join("")}</div>
+  <div id="qarea"></div>
+  <div class="stage-wrap"><canvas id="qboard" aria-label="琴键：点击作答"></canvas></div></div>`;
+}
+function renderQuiz(){
+  const el=$("qarea"); if(!el) return;
+  if(Q.over){ el.innerHTML=`<div class="qprompt"><div style="text-align:center" class="stack"><h2>${Q.score} / 10</h2><p class="muted">${Q.score>=8?(Q.mode===L[S.cur].quiz?"达标！今日任务已自动勾选。":"达标！（本关推荐的是「"+QMODES[L[S.cur].quiz]+"」模式，它才会自动勾任务）"):"8 分达标，再来一局。"}</p><div><button class="btn pri" id="qAgain">再来一局</button></div></div></div>`; return; }
+  const c=Q.cur; let prompt="", ans="";
+  if(Q.mode==="white"||Q.mode==="black") prompt=`<p>亮框里是什么键？</p>`;
+  if(Q.mode==="white"||Q.mode==="staff") ans=`<div class="answers">${"CDEFGAB".split("").map(n=>`<button class="btn" data-ans="${n}">${n}</button>`).join("")}</div>`;
+  if(Q.mode==="black") ans=`<div class="answers">${[1,3,6,8,10].map(p=>`<button class="btn" data-ans="${p}">${NAMES[p]}/${NAMES[p+1]}b</button>`).join("")}</div>`;
+  if(Q.mode==="staff") prompt=`<div style="color:var(--ink)">${staffSVG(c.m)}</div><p class="small muted">高音谱号，这是哪个音？</p>`;
+  if(Q.mode==="jianpu") prompt=`<div style="text-align:center"><div class="small muted">1=C，在下面的琴键上点出这个音</div><span class="jp">${c.deg+1}${c.oct===5?'<i class="dot" style="top:2px"></i>':c.oct===3?'<i class="dot" style="bottom:2px"></i>':""}</span></div>`;
+  if(Q.mode==="chord") { prompt=`<div style="text-align:center"><div class="small muted">在琴键上点出这个和弦的三个音（任意八度）</div><div class="jp" style="font-family:var(--f-display)">${c.name}</div></div>`; ans=`<div class="row"><span class="small">已选：<b class="mono" id="qsel">还没选</b></span><button class="btn pri" id="qChord">确定</button><button class="btn" id="qClr">清空</button></div>`; }
+  el.innerHTML=`<div class="stack"><div class="row" style="justify-content:space-between"><span class="small muted">第 <b class="mono">${Q.i+1}</b>/10 题 · 得分 <b class="mono">${Q.score}</b></span><span class="fb" id="qfb"></span></div><div class="qprompt">${prompt}</div>${ans}</div>`;
+}
+function vCoach(){
+  return `<div class="stack"><div class="panel stack">
+  <div><h3>AI 钢琴教练</h3><p class="small muted">它知道你在第几关、学过什么。可以问乐理和手型，也可以把简谱贴进来让它转成练琴房能播放的格式。</p></div>
+  <div class="row"><button class="btn ${coachMode==="ask"?"on":""}" data-cm="ask">问问题</button><button class="btn ${coachMode==="convert"?"on":""}" data-cm="convert">简谱转练琴格式</button></div>
+  <textarea id="cIn" placeholder="${coachMode==="ask"?"比如：左手八度够不到怎么办？/ 1=F 的谱怎么看？/ 这段切分怎么数拍？":"把简谱贴进来，写上 1=? 和拍号。比如：1=C 4/4  3 5 5. 6 | 5 3 2 1 -"}"></textarea>
+  <div class="row"><button class="btn pri" id="cGo">${coachMode==="ask"?"发送":"转换"}</button><button class="btn" id="cCopy">复制提示词（不能用 AI 时拿去别的聊天里问）</button></div>
+  <div class="ai-out" id="cOut" aria-live="polite">${esc(coachOut)}</div>
+  <div id="cAct"></div></div></div>`;
+}
+function vMe(){
+  const days=[]; const d=new Date(); d.setDate(d.getDate()-7*12+1+((6-d.getDay()+7)%7)-6);
+  const start=new Date(); start.setDate(start.getDate()-83-start.getDay());
+  for(let i=0;i<84+new Date().getDay()+1;i++){const t=new Date(start);t.setDate(start.getDate()+i);const n=dayQ(dkey(t)).length, mn=Math.round((S.days[dkey(t)]?.sec||0)/60);days.push(`<i data-n="${n===0&&!mn?0:n<3?1:n<5?2:3}" title="${dkey(t)}：${n} 项任务，练琴 ${mn} 分钟"></i>`);}
+  const totMin=Math.round(Object.values(S.days).reduce((a,x)=>a+(x.sec||0),0)/60);
+  let wk=0; for(let i=0;i<7;i++){const t=new Date();t.setDate(t.getDate()-i);wk+=S.days[dkey(t)]?.sec||0;} wk=Math.round(wk/60);
+  const log=(S.log||[]).slice(0,20);
+  const cleared=Object.keys(S.boss).length;
+  return `<div class="stack">
+  <div class="kv"><div><span class="small muted">已通关</span><b>${cleared}/${NLV}</b></div><div><span class="small muted">总经验</span><b>${totalXP()}</b></div><div><span class="small muted">当前连续</span><b>${streak()} 天</b></div><div><span class="small muted">最长连续</span><b>${bestStreak()} 天</b></div><div><span class="small muted">练习天数</span><b>${Object.keys(S.days).length}</b></div><div><span class="small muted">练琴房总时长</span><b>${totMin} 分</b></div><div><span class="small muted">最近 7 天</span><b>${wk} 分</b></div></div>
+  <div class="panel stack"><h3>最近练习记录</h3>${log.length?`<div style="overflow-x:auto"><table class="log"><thead><tr><th>日期</th><th>曲目</th><th>准确率</th><th>用时</th><th>卡住的小节</th></tr></thead><tbody>${log.map(r=>`<tr><td class="mono">${r.d.slice(5)}</td><td>${esc(r.n)}${r.mic?" · 听音":""}</td><td class="mono">${r.acc}%</td><td class="mono">${Math.floor(r.sec/60)}:${pad(r.sec%60)}</td><td>${r.slow?.length?r.slow.map(([b,w])=>`第 ${b} 小节 ${w}s`).join("、"):"—"}</td></tr>`).join("")}</tbody></table></div>`:`<p class="small muted">在练琴房用等待模式弹完一首，这里会记下准确率、用时和卡住的小节。</p>`}</div>
+  <div class="panel stack"><h3>最近 12 周</h3><div class="heat">${days.join("")}</div></div>
+  <div class="panel stack"><h3>徽章</h3><div class="badges">${BADGES.map(b=>`<div class="bdg ${b.f()?"got":""}"><b>${b.t}</b><div class="small">${b.d}</div></div>`).join("")}</div></div>
+  <div class="panel stack"><h3>认键游戏最佳</h3><div class="row">${Object.entries(QMODES).map(([k,n])=>`<span class="chip">${n} ${S.quizBest[k]??"–"}</span>`).join("")}</div></div>
+  <div class="panel stack"><h3>重新开始</h3><p class="small muted">清空所有进度、曲谱和成绩，回到第 1 关。</p><div class="row"><button class="btn" id="rst1">清空进度</button><span id="rst2"></span></div></div>
+  </div>`;
+}
+function render(){
+  renderRank(); renderTabs();
+  const v=$("view");
+  v.innerHTML=({today:vToday,map:vMap,room:vRoom,quiz:vQuiz,coach:vCoach,me:vMe})[tab]();
+  if(tab==="room"){
+    P.board=makeBoard($("stage"),{fallH:Math.min(320,Math.round(window.innerHeight*.42)),keyH:110,onPress:m=>onKey(m)});
+    loadEx(P.exKey||(L[S.cur].useSong?"song":S.cur+"-0")); hud();
+  } else { stop(); }
+  if(tab==="quiz"){
+    QB=makeBoard($("qboard"),{keyH:120,onPress:m=>qPress(m)}); QB.setRange(48,84);
+    QB.draw=()=>{const ctx=QB.canvas.getContext("2d"); QB.drawKeys(ctx,null);};
+    if(!Q.cur||Q.over){Q.i=0;Q.score=0;Q.over=false;} qNew();
+  } else QB=null;
+}
+(function qLoop(){ requestAnimationFrame(qLoop); if(QB&&tab==="quiz") QB.draw(); })();
+requestAnimationFrame(frame);
+window.addEventListener("resize",()=>{ if(P.board&&tab==="room") P.board.resize(); if(QB) QB.resize(); });
+
+/* ===================== AI 教练 ===================== */
+let coachMode="ask", coachOut="", coachJSON=null;
+function coachPrompt(text){
+  const lv=S.cur, Lv=L[lv];
+  const ctx=`你是一位耐心的钢琴老师，学生是零基础成年人，用中文回答，简短具体，少用术语，必要时给练习步骤。
+学生情况：用电子琴自学，目标是弹出 Cuppix 改编的《失眠的夜》DJ 热搜版钢琴曲。现在在第 ${lv}/15 关「${Lv.t}」，本关目标：${Lv.goal}
+已学过：${Array.from({length:lv},(_,i)=>L[i+1].t).join("、")}。`;
+  if(coachMode==="ask") return `${ctx}\n\n学生的问题：\n${text}`;
+  return `${ctx}
+任务：把学生给的简谱（或音名）转换成练琴房格式。格式规则：音名 C D E F G A B，可加 # 或 b，可加八度数字（C4 = 中央 C；右手不写八度默认 4，左手默认 3）；":数字" 是拍数（默认 1 拍，0.5 = 八分音符，1.5 = 附点四分）；同时按的音用 + 连接，如 A3+C4+E4:4；休止写 0:拍数；小节之间写 |。
+简谱换算：先看 1=? 确定 1 对应的音，上加点 +1 八度，下加点 -1 八度；"-" 加 1 拍；下划线一条 = 0.5 拍；附点 ×1.5。
+只返回 JSON：{"rh":"右手字符串","lh":"左手字符串，没有就空字符串","bpm":数字,"note":"一两句说明，包括你不确定的地方"}
+学生给的谱：
+${text}`;
+}
+
+/* ===================== 事件 ===================== */
+document.addEventListener("click",async e=>{
+  const t=e.target.closest("button,[data-q]"); if(!t) return;
+  if(t.dataset.tab){ tab=t.dataset.tab; try{localStorage.setItem(KEY+"-tab",tab);}catch(e){} render(); window.scrollTo({top:0}); return; }
+  if(t.dataset.go){ P.exKey=t.dataset.go; tab="room"; render(); window.scrollTo({top:$("tabs").offsetTop}); return; }
+  if(t.dataset.lv){ const lv=+t.dataset.lv; if(lv>S.cur){toast("先打败第 "+S.cur+" 关的 BOSS");return;} mapSel=lv; render(); return; }
+  if(t.id==="bossWin"){
+    const lv=S.cur; S.boss[lv]=today();
+    if(lv<NLV){ S.cur=lv+1; toast(`打败 ${L[lv].boss.t}！解锁第 ${lv+1} 关`); } else toast("你弹完了《失眠的夜》！");
+    save(); render(); window.scrollTo({top:0}); return;
+  }
+  // 练琴房
+  if(t.id==="playBtn"){ P.playing?stop():play(); return; }
+  if(t.id==="resetBtn"){ stop(); reset(); hud(); return; }
+  if(t.id==="micBtn"){ micToggle(); return; }
+  if(t.id==="metroBtn"){ P.metro=!P.metro; t.classList.toggle("on",P.metro); t.textContent="节拍器 "+(P.metro?"开":"关"); return; }
+  if(t.id==="lblBtn"){ P.board.labels=!P.board.labels; t.classList.toggle("on",P.board.labels); t.textContent="键名 "+(P.board.labels?"显示":"隐藏"); return; }
+  if(t.id==="sgSave"){
+    S.song={name:$("sgName").value.trim()||"我的曲子",bpm:Math.min(200,Math.max(30,+$("sgBpm").value||70)),rh:$("sgRh").value,lh:$("sgLh").value,memo:$("sgMemo").value};
+    save(); P.exKey="song"; render(); toast("已保存，练琴房已载入"); return;
+  }
+  // 认键游戏
+  if(t.dataset.qm){ Q.mode=t.dataset.qm; Q.i=0; Q.score=0; Q.over=false; render(); return; }
+  if(t.dataset.ans){ const a=t.dataset.ans, m=Q.cur.m; const right=Q.mode==="black"?String(m%12)===a:NAMES[m%12]===a; qAnswer(right,Q.mode==="black"?NAMES[m%12]+"/"+NAMES[m%12+1]+"b":NAMES[m%12]); return; }
+  if(t.id==="qChord"){ qChordCheck(); return; }
+  if(t.id==="qClr"){ Q.sel.clear(); QB.hint=new Set(); $("qsel").textContent="还没选"; return; }
+  if(t.id==="qAgain"){ Q.i=0;Q.score=0;Q.over=false; qNew(); return; }
+  // AI 教练
+  if(t.dataset.cm){ coachMode=t.dataset.cm; coachOut=""; coachJSON=null; render(); return; }
+  if(t.id==="cCopy"){ const p=coachPrompt($("cIn").value.trim()||"（在这里写你的问题）"); try{await navigator.clipboard.writeText(p);toast("提示词已复制");}catch(err){$("cOut").textContent=p;toast("复制不了，已显示在下面，手动选中复制");} return; }
+  if(t.id==="cGo"){
+    const text=$("cIn").value.trim(); if(!text){toast("先写点内容");return;}
+    const out=$("cOut"), act=$("cAct"); act.innerHTML="";
+    const sample=await window.claude?.use?.("sample");
+    if(!sample){ out.textContent="这里用不了 AI（可能没登录）。点「复制提示词」拿去和 Claude 的聊天里问。"; return; }
+    t.disabled=true; out.textContent="思考中…";
+    try{
+      if(coachMode==="ask"){ const r=await sample(coachPrompt(text),{cache:false,onText:({text})=>{out.textContent=text;}}); coachOut=r.text; out.textContent=r.text; }
+      else{
+        const j=await sample.json(coachPrompt(text),{cache:false}); coachJSON=j;
+        coachOut=`右手：${j.rh||"（无）"}\n左手：${j.lh||"（无）"}\n速度：${j.bpm||"?"} BPM\n\n${j.note||""}`; out.textContent=coachOut;
+        act.innerHTML=`<div class="row"><button class="btn pri" id="cApply">追加到「我的曲谱」</button><button class="btn" id="cReplace">替换「我的曲谱」</button></div>`;
+      }
+    }catch(err){ out.textContent=err?.code==="rate_limited"?"问得太快了，等一分钟再试。":"出错了："+(err?.message||err)+"。可以换个说法再试，或者用「复制提示词」。"; }
+    t.disabled=false; return;
+  }
+  if(t.id==="cApply"||t.id==="cReplace"){
+    const j=coachJSON||{}, add=t.id==="cApply", join=(a,b)=>add&&a?.trim()?a.trim()+" |\n"+(b||""):(b||"");
+    S.song={...S.song,rh:join(S.song.rh,j.rh),lh:join(S.song.lh,j.lh),bpm:(!add||!S.song.rh)&&j.bpm?j.bpm:S.song.bpm};
+    save(); P.exKey="song"; tab="room"; render(); toast(add?"已追加，去试听一下":"已替换"); return;
+  }
+  // 进度
+  if(t.id==="rst1"){ $("rst2").innerHTML=`<button class="btn" id="rst3" style="border-color:var(--bad);color:var(--bad)">确定清空，不能恢复</button>`; return; }
+  if(t.id==="rst3"){ S=blank(); save(); P.exKey=null; tab="today"; render(); toast("已清空"); return; }
+});
+document.addEventListener("change",e=>{
+  const t=e.target;
+  if(t.dataset.q){ setQ(t.dataset.q,t.checked); render(); return; }
+  if(t.dataset.boss!=null){ const lv=S.cur; const c=S.bossChk[lv]||(S.bossChk[lv]=[]); c[+t.dataset.boss]=t.checked; save(); render(); return; }
+  if(t.id==="exSel"){ P.exKey=t.value; render(); return; }
+  if(t.id==="modeSel"){ P.mode=t.value; stop(); reset(); hud(); return; }
+  if(t.id==="handSel"){ P.hand=t.value; stop(); reset(); hud(); return; }
+});
+document.addEventListener("input",e=>{
+  if(e.target.id==="sens"){ MIC.sens=+e.target.value; try{localStorage.setItem(KEY+"-sens",MIC.sens);}catch(err){} }
+  if(e.target.id==="spd"){ P.speed=+e.target.value/100; $("spdTxt").textContent=e.target.value+"%"; hud(); }
+});
+render();
+</script>
+
+</body></html>
