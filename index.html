@@ -633,8 +633,10 @@ async function micToggle(){
   render();
 }
 function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
-function noteScore(m){ const f=440*2**((m-69)/12); return (binDb(f)+binDb(2*f)+binDb(3*f))/3; }
-function present(m){ const sc=noteScore(m); return binDb(440*2**((m-69)/12))>MIC.floor+10&&sc>MIC.floor+MIC.sens&&sc>noteScore(m-1)+3&&sc>noteScore(m+1)+3; }
+// 谐波和：把一个音的前 6 个泛音能量加起来。低音（C2 这类）基音很弱，靠泛音也能认出来
+const HW=[1,1,1,1,.8,.7];
+function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d;} return {s,pk}; }
+function present(m){ const a=hsum(m); return a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
 function micFrame(now){
   MIC.an.getFloatTimeDomainData(MIC.td); let s=0; const n=1024, td=MIC.td;
   for(let i=td.length-n;i<td.length;i++) s+=td[i]*td[i];
@@ -644,9 +646,9 @@ function micFrame(now){
   MIC.an.getFloatFrequencyData(MIC.fd);
   let fl=0; for(let i=10;i<410;i++) fl+=MIC.fd[i]; MIC.floor=fl/400;
   // 找出现在响着的音，去掉泛音（比它低一个八度/十二度的音也在响，就算泛音）
-  let best=null,bs=-1e9;
-  if(rms>.004){ const on=[]; for(let m=36;m<=96;m++) if(present(m)) on.push(m);
-    const set=new Set(on); for(const m of on){ if(set.has(m-12)||set.has(m-19)||set.has(m-24)) continue; const sc=noteScore(m); if(sc>bs){bs=sc;best=m;} } }
+  let best=null,bs=0;
+  if(rms>.004){ for(let m=33;m<=96;m++){ const a=hsum(m); if(a.s>bs){bs=a.s;best=m;} }
+    if(best!=null&&hsum(best).pk<MIC.floor+MIC.sens) best=null; }
   // 同一个音连续 3 帧才算数；每次按键（起音）只报一个音，然后一直显示到下一次按键
   if(best!=null&&best===MIC.cand) MIC.candN++; else {MIC.cand=best; MIC.candN=1;}
   if(MIC.cand!=null&&MIC.candN>=3&&MIC.onset>(MIC.emitAt||0)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; micNote(MIC.cand,now); }
