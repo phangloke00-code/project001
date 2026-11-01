@@ -127,7 +127,37 @@ details>summary{cursor:pointer;font-weight:600}
 .log th{color:var(--muted);font-weight:500;border-top:0}
 .ai-out{white-space:pre-wrap;background:var(--bg3);border-radius:12px;padding:12px;min-height:50px}
 .toast{position:fixed;left:50%;bottom:calc(96px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--moon);color:var(--moon-ink);padding:10px 18px;border-radius:12px;z-index:60;max-width:calc(100% - 32px);font-weight:600}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* motion */
+button{touch-action:manipulation}
+.flow,.nav,.sheet,.node,#bd{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.node .dot{transition:transform .09s,box-shadow .09s}
+.node:active .dot{transform:translateY(4px);box-shadow:0 2px 0 #070918}
+.node.done:active .dot{box-shadow:0 2px 0 #B8902F} .node.now:active .dot{box-shadow:0 2px 0 #1E8E81}
+.node .tag{animation:bob 1.4s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-4px)}}
+@keyframes up{from{transform:translateY(28px);opacity:0}to{transform:none;opacity:1}}
+@keyframes sheetIn{from{transform:translateY(100%)}}
+@keyframes fade{from{opacity:0}}
+@keyframes pop{0%{transform:scale(.6);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:none}}
+@keyframes shake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+@keyframes starIn{0%{transform:scale(0) rotate(-50deg);opacity:0}70%{transform:scale(1.3) rotate(8deg);opacity:1}100%{transform:none;opacity:1}}
+@keyframes halo{0%,100%{transform:scale(.9);opacity:.55}50%{transform:scale(1.08);opacity:.9}}
+.flow.enter{animation:up .34s cubic-bezier(.2,.8,.2,1)}
+.scrim{animation:fade .22s}
+.sheet{animation:sheetIn .3s cubic-bezier(.2,.8,.2,1)}
+.fb.pop{animation:pop .32s ease-out} .fb.shake{animation:shake .36s}
+.result .stars{display:flex;justify-content:center;gap:6px;letter-spacing:0}
+.result .stars .s{display:inline-block;opacity:0;animation:starIn .55s cubic-bezier(.3,1.5,.5,1) forwards}
+.result .stars .s.off{color:var(--dim)}
+.result .stars .s.on{text-shadow:0 0 18px rgba(255,211,110,.7)}
+.result>*:not(.stars){animation:up .4s both}
+.result.fail .stars{animation:shake .45s 1.1s}
+.result .halo{position:absolute;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,211,110,.35),transparent 65%);animation:halo 2.4s ease-in-out infinite;z-index:-1;top:-30px}
+.result{position:relative;isolation:isolate}
+.reveal{animation:up .4s both}
+#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:70}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.result .stars .s{opacity:1}}
 </style>
 
 <div class="sky"></div>
@@ -440,7 +470,7 @@ function tick(strong){
 /* ===================== 键盘画布 ===================== */
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
 function makeBoard(canvas,{fallH=0,keyH=110,onPress}){
-  const B={canvas,fallH,keyH,lo:48,hi:84,lay:null,W:0,onPress,flash:new Map(),hint:new Set(),labels:true};
+  const B={canvas,fallH,keyH,lo:48,hi:84,lay:null,W:0,onPress,flash:new Map(),good:new Map(),bad:new Map(),hint:new Set(),labels:true};
   B.setRange=(lo,hi)=>{B.lo=lo;B.hi=hi;B.resize();};
   B.resize=()=>{
     const wrap=canvas.parentElement; const whites=[]; for(let m=B.lo;m<=B.hi;m++) if(!isBlack(m)) whites.push(m);
@@ -463,7 +493,8 @@ function makeBoard(canvas,{fallH=0,keyH=110,onPress}){
   canvas.addEventListener("pointerdown",e=>{const r=canvas.getBoundingClientRect(); B.press(B.hit(e.clientX-r.left,e.clientY-r.top),"screen");});
   B.drawKeys=(ctx,lit)=>{
     const {pos}=B.lay, y0=B.fallH, H=B.keyH, now=performance.now(), rh=css("--rh"), lh=css("--lh");
-    const col=m=>{ if((B.flash.get(m)||0)>now) return "#7FD4A0"; const l=lit?.get(m); if(l) return l==="l"?lh:rh; return null; };
+    // 红 = 弹错，绿 = 弹对，淡蓝 = 只是听到/按到
+    const col=m=>{ if((B.bad.get(m)||0)>now) return "#FF8A8A"; if((B.good.get(m)||0)>now) return "#7FE0A6"; if((B.flash.get(m)||0)>now) return "#B9CCFF"; const l=lit?.get(m); if(l) return l==="l"?lh:rh; return null; };
     ctx.font="600 11px "+css("--f-mono");
     ctx.textAlign="center";
     for(const m of B.lay.whites){const p=pos[m];
@@ -485,7 +516,7 @@ console.assert(compile({rh:"C D:2 0 E+G",lh:"C3:4"}).len===5&&compile({rh:"C D:2
 
 /* ===================== 麦克风听音 ===================== */
 // 已知要弹哪些音，所以只检查"这几个音在不在"：比较目标音（含 2、3 次谐波）和左右半音的能量，再要求有新的按键起音
-const MIC={on:false,an:null,fd:null,td:null,slow:0,onset:0,floor:-100,heard:null,sens:20,msg:"",hudTxt:""};
+const MIC={on:false,an:null,fd:null,td:null,slow:0,onset:0,floor:-100,heard:null,sens:20,msg:"",hudTxt:"",nf:.002,t0:0,E:new Float32Array(128),prevE:new Float32Array(128),pre:null};
 try{const v=+localStorage.getItem(KEY+"-sens"); if(v) MIC.sens=v;}catch(e){}
 const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
 async function micToggle(){
@@ -493,7 +524,7 @@ async function micToggle(){
   try{
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     const a=ac(), src=a.createMediaStreamSource(st), an=a.createAnalyser(); an.fftSize=8192; an.smoothingTimeConstant=.3; src.connect(an);
-    Object.assign(MIC,{on:true,stream:st,an,fd:new Float32Array(an.frequencyBinCount),td:new Float32Array(an.fftSize),msg:"听音已开启。手机放近琴的喇叭，环境安静一点更准。"});
+    Object.assign(MIC,{on:true,stream:st,an,t0:performance.now(),nf:1,pre:null,emitAt:0,fd:new Float32Array(an.frequencyBinCount),td:new Float32Array(an.fftSize),msg:"听音已开启。手机放近琴的喇叭，环境安静一点更准。"});
   }catch(e){
     MIC.msg=inFrame?"这个页面嵌在 claude.ai 里，浏览器不让它用麦克风。用你的 GitHub Pages 网址打开就能听音。":"麦克风没有打开："+(e.name==="NotAllowedError"?"你或浏览器拒绝了权限，在浏览器的网站设置里允许麦克风再试。":(e.message||e.name));
   }
@@ -502,37 +533,45 @@ async function micToggle(){
 function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
 // 谐波和：把一个音的前 6 个泛音能量加起来。低音（C2 这类）基音很弱，靠泛音也能认出来
 const HW=[1,1,1,1,.8,.7];
-function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200,low=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d; if(h<=2&&d>low) low=d;} return {s,pk,ok:low>=pk-12}; }
+function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200,low=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d; if(h<=2&&d>low) low=d;} return {s,pk,lo:10**(low/20),ok:low>=pk-12}; }
 // ok：基音或第 2 泛音必须够响，否则多半是更高的音被当成了它的泛音（例如 G4 被认成 G2）
-function present(m){ const a=hsum(m); return a.ok&&a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
+// rose：这个音自己的基音或第 2 泛音比按键前明显变响了。杂音、旧音的余音、别的音的泛音都不算新弹的音
+const rose=m=>!MIC.pre||MIC.E[m]>1.3*MIC.pre[m];
+function present(m){ const a=hsum(m); return rose(m)&&a.ok&&a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
 function micFrame(now){
   MIC.an.getFloatTimeDomainData(MIC.td); let s=0; const n=1024, td=MIC.td;
   for(let i=td.length-n;i<td.length;i++) s+=td[i]*td[i];
   const rms=Math.sqrt(s/n);
-  if(rms>.006&&rms>MIC.slow*1.6) MIC.onset=now;
-  MIC.slow=MIC.slow*.9+rms*.1;
   MIC.an.getFloatFrequencyData(MIC.fd);
+  const E=MIC.prevE; MIC.prevE=MIC.E; MIC.E=E; for(let m=36;m<=96;m++) E[m]=hsum(m).lo;
+  // 开麦头 0.7 秒：先听环境噪音有多大，之后只有明显比环境响的声音才算按键
+  if(now-MIC.t0<700){ MIC.nf=Math.min(MIC.nf,rms); MIC.slow=rms; micHud("正在听环境声音，先别弹…"); return; }
+  MIC.nf=rms<MIC.nf?rms:MIC.nf*1.002; // 安静时立刻跟下来，响的时候慢慢往上爬
+  // 一次按键的音量会连续上升好几帧，只在第一帧记一次起音，不然同一个音会被报好几次
+  if(rms>Math.max(.006,MIC.nf*4)&&rms>MIC.slow*1.6){ if(now-(MIC.rising||0)>120){ MIC.pre=MIC.prevE.slice(); MIC.onset=now; } MIC.rising=now; }
+  MIC.slow=MIC.slow*.9+rms*.1;
   let fl=0; for(let i=10;i<410;i++) fl+=MIC.fd[i]; MIC.floor=fl/400;
   // 找出现在响着的音，去掉泛音（比它低一个八度/十二度的音也在响，就算泛音）
   let best=null,bs=0;
-  if(rms>.004){ for(let m=36;m<=96;m++){ const a=hsum(m); if(a.ok&&a.s>bs){bs=a.s;best=m;} }
+  if(rms>.004){ for(let m=36;m<=96;m++){ const a=hsum(m); if(a.ok&&rose(m)&&a.s>bs){bs=a.s;best=m;} }
     // 高八度的音能解释差不多的能量，就选高八度（避免 G4 被认成 G3、G2）
-    while(best!=null&&best+12<=96){ const u=hsum(best+12); if(u.ok&&u.s>.8*hsum(best).s) best+=12; else break; }
+    while(best!=null&&best+12<=96){ const u=hsum(best+12); if(u.ok&&rose(best+12)&&u.s>.8*hsum(best).s) best+=12; else break; }
     if(best!=null&&hsum(best).pk<MIC.floor+MIC.sens) best=null; }
-  // 同一个音连续 3 帧才算数；每次按键（起音）只报一个音，然后一直显示到下一次按键
+  // 同一个音连续 4 帧才算数；每次按键（起音）只报一个音，然后一直显示到下一次按键
   if(best!=null&&best===MIC.cand) MIC.candN++; else {MIC.cand=best; MIC.candN=1;}
-  if(MIC.cand!=null&&MIC.candN>=4&&MIC.onset>(MIC.emitAt||0)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; micNote(MIC.cand,now); }
+  if(MIC.cand!=null&&MIC.candN>=4&&MIC.onset>(MIC.emitAt||0)&&now-MIC.onset<350&&rose(MIC.cand)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; micNote(MIC.cand,now); }
   if(rms<.003&&now-(MIC.shownAt||0)>800) MIC.shown=null;
   MIC.heard=MIC.shown;
-  const el=document.getElementById("micHud"); if(el){ const t=`听到：${MIC.shown!=null?nameOf(MIC.shown):"—"}  音量 ${"▮".repeat(Math.min(8,Math.round(rms*120)))}`; if(t!==MIC.hudTxt){MIC.hudTxt=t; el.textContent=t;} }
+  micHud(`听到：${MIC.shown!=null?nameOf(MIC.shown):"—"}  音量 ${"▮".repeat(Math.min(8,Math.round(rms*120)))}${MIC.nf>.02?"  · 环境偏吵":""}`);
 }
+function micHud(t){ const el=document.getElementById("micHud"); if(el&&el.textContent!==t) el.textContent=t; }
 
 
 
 /* ===================== 播放器（下落音符） ===================== */
 let BD=null, ACT=null; // 当前画面上的键盘，以及它在干什么：player / try / quiz
 const WIN=.4; // 跟拍模式允许的误差（拍）
-const P={key:null,ex:null,notes:[],len:0,bpm:72,speed:.7,mode:"wait",hand:"r",metro:true,playing:false,tb:-4,next:0,groups:[],gi:0,lit:new Map(),hits:0,miss:0,sec:0,finished:null,onDone:null,lastBeat:-99};
+const P={key:null,ex:null,notes:[],len:0,bpm:72,speed:.7,mode:"wait",hand:"r",metro:true,playing:false,tb:-4,next:0,groups:[],gi:0,lit:new Map(),hits:0,miss:0,combo:0,best:0,fx:[],sec:0,finished:null,onDone:null,lastBeat:-99};
 const userHand=n=>P.mode!=="demo"&&(P.hand==="both"||P.hand===n.h);
 const hasHand=h=>P.notes.some(n=>n.h===h);
 function setEx(ex,key){
@@ -547,10 +586,19 @@ function fitRange(notes){
   BD?.setRange(lo,Math.min(hi,108));
 }
 function reset(){
-  P.tb=-4; P.sec=0; P.next=0; P.gi=0; P.hits=0; P.miss=0; P.lit.clear(); P.finished=null; P.lastBeat=-99;
+  P.tb=-4; P.sec=0; P.next=0; P.gi=0; P.hits=0; P.miss=0; P.combo=0; P.best=0; P.fx=[]; P.lit.clear(); P.finished=null; P.lastBeat=-99;
   const g=new Map(); for(const n of P.notes) if(userHand(n)){ if(!g.has(n.s)) g.set(n.s,{s:n.s,ms:new Set(),hit:new Set()}); g.get(n.s).ms.add(n.m); }
   P.groups=[...g.values()].sort((a,b)=>a.s-b.s);
   if(BD) BD.hint=new Set();
+}
+// 弹对：键上方冒光圈和文字，连对数 +1；弹错：红色，连对归零
+function hitFx(m,ok){
+  const now=performance.now(), g=P.groups[P.gi];
+  if(ok){ P.combo++; P.best=Math.max(P.best,P.combo); mark(m,true); }
+  else { if(P.combo>=5) P.fx.push({m:null,t:now,txt:"连对中断"}); P.combo=0; mark(m,false); }
+  let txt=null; if(ok&&P.mode==="timing"&&g){ const d=Math.abs(P.tb-g.s); txt=d<.12?"完美":d<.25?"很好":"还行"; }
+  if(!ok) txt="✕";
+  P.fx.push({m,t:now,ok,txt}); if(P.fx.length>24) P.fx.shift();
 }
 let wake=null;
 function wakeOn(){try{navigator.wakeLock?.request("screen").then(w=>wake=w).catch(()=>{});}catch(e){}}
@@ -561,7 +609,7 @@ function playerTick(now,dt){
   if(!P.playing) return;
   let nt=P.tb+dt*P.bpm/60*P.speed, g=P.groups[P.gi];
   if(P.mode==="wait"&&g&&nt>=g.s){ nt=g.s; if(!g.waitFrom) g.waitFrom=now; }
-  if(P.mode==="timing") while(g&&nt>g.s+WIN){ advanceGroup(now); g=P.groups[P.gi]; }
+  if(P.mode==="timing") while(g&&nt>g.s+WIN){ if(g.hit.size<g.ms.size){ if(P.combo>=5) P.fx.push({m:null,t:now,txt:"连对中断"}); P.combo=0; } advanceGroup(now); g=P.groups[P.gi]; }
   P.sec+=dt;
   while(P.next<P.notes.length&&P.notes[P.next].s<nt){
     const n=P.notes[P.next++];
@@ -572,7 +620,7 @@ function playerTick(now,dt){
   P.tb=nt;
   const win=P.mode==="wait"?.75:WIN;
   if(MIC.on&&P.mode!=="demo"&&g&&P.tb>=g.s-win&&MIC.onset>(g.armed||0)){
-    let ch=false; for(const m of g.ms) if(!g.hit.has(m)&&present(m)){g.hit.add(m);P.hits++;BD.flash.set(m,now+260);ch=true;}
+    let ch=false; for(const m of g.ms) if(!g.hit.has(m)&&present(m)){g.hit.add(m);P.hits++;hitFx(m,true);ch=true;}
     if(g.hit.size===g.ms.size) advanceGroup(now); if(ch) hud();
   }
   for(const [m,v] of P.lit) if(v.until<=P.tb) P.lit.delete(m);
@@ -583,8 +631,8 @@ function playerTick(now,dt){
 function playerKey(m){
   if(P.mode==="demo"||!P.playing) return;
   const g=P.groups[P.gi], win=P.mode==="wait"?.75:WIN;
-  if(g&&g.ms.has(m)&&P.tb>=g.s-win){ if(!g.hit.has(m)){g.hit.add(m);P.hits++;} if(g.hit.size===g.ms.size) advanceGroup(performance.now()); }
-  else P.miss++;
+  if(g&&g.ms.has(m)&&P.tb>=g.s-win){ if(!g.hit.has(m)){g.hit.add(m);P.hits++;hitFx(m,true);} if(g.hit.size===g.ms.size) advanceGroup(performance.now()); }
+  else { P.miss++; hitFx(m,false); }
   hud();
 }
 function finish(){
@@ -624,6 +672,18 @@ function drawPlayer(){
     ctx.fillStyle="rgba(255,255,255,.8)"; ctx.font="14px "+css("--f-body");
     ctx.fillText(stuck?"要按："+[...gw.ms].filter(m=>!gw.hit.has(m)).map(nameOf).join(" + "):"弹亮框里的键",W/2,20);
   }
+  const now=performance.now();
+  for(const f of P.fx){ const k=(now-f.t)/600; if(k>1) continue; const e=1-(1-k)**2;
+    if(f.m==null){ ctx.globalAlpha=1-k; ctx.fillStyle=css("--bad"); ctx.font="600 15px "+css("--f-body"); ctx.fillText(f.txt,W/2,F*.45-e*20); continue; }
+    const p=pos[f.m]; if(!p) continue; const cx=p.x+p.w/2;
+    ctx.globalAlpha=(1-k)*.9; ctx.strokeStyle=f.ok?css("--good"):css("--bad"); ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(cx,F-4,6+e*22,0,Math.PI*2); ctx.stroke();
+    if(f.ok){ ctx.fillStyle=css("--moon"); for(let i=0;i<5;i++){ const a=-Math.PI*(.15+.7*i/4); ctx.fillRect(cx+Math.cos(a)*e*30-1.5,F-4+Math.sin(a)*e*30-1.5,3,3); } }
+    if(f.txt){ ctx.globalAlpha=1-k; ctx.font="700 14px "+css("--f-body"); ctx.lineWidth=4; ctx.strokeStyle="#060815"; ctx.strokeText(f.txt,cx,F-30-e*26); ctx.fillStyle=f.ok?css("--moon"):css("--bad"); ctx.fillText(f.txt,cx,F-30-e*26); }
+  }
+  ctx.globalAlpha=1;
+  if(P.combo>=3&&P.mode!=="demo"){ const last=P.fx.findLast?.(f=>f.ok); const k=last?Math.min(1,(now-last.t)/180):1;
+    ctx.fillStyle=css("--moon"); ctx.textAlign="right"; ctx.font=`${Math.round(18+6*(1-k))}px `+css("--f-display"); ctx.fillText("连对 ×"+P.combo,W-10,26); ctx.textAlign="center"; }
   const lit=new Map(); for(const [m,v] of P.lit) lit.set(m,v.h);
   B.drawKeys(ctx,lit);
 }
@@ -632,7 +692,7 @@ function hud(){
   const pb=document.getElementById("playBtn"); if(pb) pb.textContent=P.playing?"暂停":(P.finished?"再来一次":"开始弹");
   const bar=Math.max(0,Math.floor(P.tb/4)+1), tot=Math.max(1,Math.ceil(P.len/4));
   let s=`<span>小节 <b class="mono">${Math.min(bar,tot)}/${tot}</b></span><span><b class="mono">${Math.round(P.bpm*P.speed)}</b> BPM</span>`;
-  if(P.mode!=="demo") s+=`<span>对 <b class="mono">${P.hits}</b></span><span>错 <b class="mono">${P.miss}</b></span>`;
+  if(P.mode!=="demo") s+=`<span>对 <b class="mono">${P.hits}</b></span><span>错 <b class="mono">${P.miss}</b></span>${P.best>=3?`<span>最多连对 <b class="mono">${P.best}</b></span>`:""}`;
   if(P.finished&&ACT==="player"&&!F.open) s+=P.finished.acc!=null?`<span><b>准确率 ${P.finished.acc}%</b></span>`+(P.finished.slow.length?`<span>卡得最久：${P.finished.slow.map(([b,w])=>`第 ${b} 小节`).join("、")}</span>`:""):`<span>示范结束</span>`;
   el.innerHTML=s;
 }
@@ -649,17 +709,17 @@ function tryHint(){ const g=T.groups[T.gi]; if(BD) BD.hint=new Set(g?[...g.ms].f
 function tryHit(m){
   if(T.done) return; const g=T.groups[T.gi]; if(!g) return;
   const fb=document.getElementById("fb");
-  if(g.ms.has(m)){ g.hit.add(m);
+  if(g.ms.has(m)){ g.hit.add(m); mark(m,true);
     if(g.hit.size===g.ms.size){ T.gi++; T.armed=performance.now();
-      if(T.gi>=T.groups.length){ T.done=true; if(fb){fb.className="fb ok";fb.textContent=rnd(["很好！","对了！","漂亮！","就是这样！"]);}
+      if(T.gi>=T.groups.length){ T.done=true; if(fb){fb.className="fb ok";fb.textContent=rnd(["很好！","对了！","漂亮！","就是这样！"]);retrig(fb,"pop");}
         setTimeout(()=>{ if(T.i+1<T.list.length){ tryLoad(T.i+1); renderFlow(); } else stepPass(3); },900); }
     }
     tryHint();
-  } else if(fb){ fb.className="fb no"; fb.textContent=`这是 ${nameOf(m)}，要弹的是亮框里的 ${[...g.ms].filter(x=>!g.hit.has(x)).map(nameOf).join(" + ")}`; }
+  } else { mark(m,false); if(fb){ fb.className="fb no"; retrig(fb,"shake"); fb.textContent=`这是 ${nameOf(m)}，要弹的是亮框里的 ${[...g.ms].filter(x=>!g.hit.has(x)).map(nameOf).join(" + ")}`; } }
 }
 function tryTick(now){
   if(!MIC.on||T.done) return; const g=T.groups[T.gi];
-  if(g&&g.ms.size>1&&MIC.onset>T.armed) for(const m of g.ms) if(!g.hit.has(m)&&present(m)){ BD.flash.set(m,now+300); tryHit(m); }
+  if(g&&g.ms.size>1&&MIC.onset>T.armed) for(const m of g.ms) if(!g.hit.has(m)&&present(m)) tryHit(m);
 }
 
 /* ===================== 小测验 ===================== */
@@ -680,7 +740,8 @@ function qNew(draw=true){
 }
 function qAnswer(ok,reveal){
   if(Q.locked) return; Q.locked=true; if(ok) Q.score++;
-  const fb=document.getElementById("fb"); if(fb){fb.className="fb "+(ok?"ok":"no"); fb.textContent=ok?"对了！":"正确答案：" +reveal;}
+  const fb=document.getElementById("fb"); if(fb){fb.className="fb "+(ok?"ok":"no"); fb.textContent=ok?rnd(["对了！","没错！","好眼力！"]):"正确答案：" +reveal; retrig(fb,ok?"pop":"shake");}
+  if(!ok) buzz(30); if(Q.cur.m!=null&&BD&&!ok) BD.hint=new Set([Q.cur.m]);
   if(Q.cur.m!=null) setTimeout(()=>tone(Q.cur.m,.6),ok?0:150); else Q.cur.pcs.forEach(pc=>tone(60+pc+(pc<Q.cur.pcs[0]?12:0),.8));
   setTimeout(()=>{ Q.i++; if(Q.i>=10){ Q.over=true; S.quizBest[Q.mode]=Math.max(S.quizBest[Q.mode]||0,Q.score); save();
       const st=Q.score>=10?3:Q.score>=9?2:Q.score>=8?1:0; showResult({stars:st,pass:st>=1,title:`${Q.score} / 10`,msg:st?"测验通过":"差一点，8 题过关，再来一局"}); }
@@ -688,6 +749,7 @@ function qAnswer(ok,reveal){
 }
 function qPress(m){
   if(Q.over||Q.locked||!Q.cur) return;
+  if(Q.mode!=="chord") mark(m,Q.mode==="jianpu"?m===Q.cur.m:m%12===Q.cur.m%12);
   if(["white","black","staff"].includes(Q.mode)){ const c=Q.cur.m%12; qAnswer(m%12===c,Q.mode==="black"?NAMES[c]+"/"+NAMES[c+1]+"b":NAMES[c]); return; }
   if(Q.mode==="jianpu") qAnswer(m===Q.cur.m,nameOf(Q.cur.m));
   if(Q.mode==="chord"){ Q.sel.has(m)?Q.sel.delete(m):Q.sel.add(m); BD.hint=new Set(Q.sel); const el=document.getElementById("qsel"); if(el) el.textContent=[...Q.sel].sort((a,b)=>a-b).map(nameOf).join(" ")||"还没选";
@@ -709,6 +771,7 @@ function staffSVG(m){
 
 
 /* ===================== 输入：屏幕、电脑键盘、MIDI、麦克风 ===================== */
+function mark(m,ok){ BD?.[ok?"good":"bad"].set(m,performance.now()+(ok?320:520)); if(!ok) buzz(30); }
 function input(m,src){
   if(src!=="screen"&&src!=="kbd") BD?.flash.set(m,performance.now()+300);
   if(ACT==="player") playerKey(m); else if(ACT==="try") tryHit(m); else if(ACT==="quiz") qPress(m);
@@ -745,10 +808,33 @@ function mountBoard(fallH,keyH,lo,hi){
   BD.setRange(lo??48,hi??72);
 }
 
+/* ===================== 动效 ===================== */
+const RM=matchMedia("(prefers-reduced-motion: reduce)").matches;
+function anim(el,kf,o){ if(!RM&&el?.animate) el.animate(kf,{duration:240,easing:"cubic-bezier(.2,.8,.2,1)",...o}); }
+function buzz(ms){ try{navigator.vibrate?.(ms);}catch(e){} }
+function retrig(el,cls){ if(!el) return; el.classList.remove("pop","shake"); void el.offsetWidth; el.classList.add(cls); }
+function confetti(n=90){
+  if(RM) return; const c=document.createElement("canvas"); c.id="fx"; document.body.appendChild(c);
+  const dpr=devicePixelRatio||1, W=innerWidth, H=innerHeight; c.width=W*dpr; c.height=H*dpr; const x=c.getContext("2d"); x.scale(dpr,dpr);
+  const cols=["#FFD36E","#3DDBC8","#B79BFF","#FF9FB2","#EEF0FF"];
+  const ps=Array.from({length:n},()=>({x:W/2+(Math.random()-.5)*60,y:H*.32,vx:(Math.random()-.5)*9,vy:-Math.random()*11-4,r:Math.random()*6,vr:(Math.random()-.5)*.4,w:5+Math.random()*5,c:cols[Math.floor(Math.random()*cols.length)]}));
+  const t0=performance.now();
+  (function f(now){ const t=now-t0; x.clearRect(0,0,W,H);
+    for(const p of ps){ p.vy+=.32; p.vx*=.99; p.x+=p.vx; p.y+=p.vy; p.r+=p.vr; x.save(); x.globalAlpha=Math.max(0,1-t/2200); x.translate(p.x,p.y); x.rotate(p.r); x.fillStyle=p.c; x.fillRect(-p.w/2,-3,p.w,6); x.restore(); }
+    if(t<2200) requestAnimationFrame(f); else c.remove(); })(t0);
+}
+// 手机返回键：关掉全屏练习 / 底部面板，而不是离开网页
+function pushNav(){ try{ if(!history.state?.pq) history.pushState({pq:1},""); }catch(e){} }
+function hideLayer(){ if(F.open) closeFlow(); else if($("layer").innerHTML){ $("layer").innerHTML=""; render.scrolled=false; render(); } }
+function uiClose(){ if(history.state?.pq){ try{history.back();return;}catch(e){} } hideLayer(); }
+window.addEventListener("popstate",hideLayer);
+document.addEventListener("visibilitychange",()=>{ if(document.hidden){ if(P.playing) stop(); } else if(F.open) wakeOn(); });
+
 /* ===================== 关卡流程（全屏） ===================== */
-const F={open:false,lv:1,si:0,card:0,res:null};
+const F={open:false,lv:1,si:0,card:0,res:null,enter:false,pct:0,dir:0};
 function lessonCards(lv){ const d=document.createElement("div"); d.innerHTML=L[lv].lesson; return [...d.children].map(c=>c.outerHTML); }
 function openStep(lv,si){
+  if(!F.open){ F.enter=true; F.pct=0; pushNav(); }
   Object.assign(F,{open:true,lv,si,card:0,res:null});
   const st=stepsOf(lv)[si];
   if(st.k==="try"){ T.list=TRIES[lv]; T.i=0; }
@@ -771,15 +857,25 @@ function showResult(r){
   if(r.pass) r.levelUp=setStars(F.lv,F.si,r.stars);
   renderFlow();
 }
+// 星星一颗颗弹出来，每颗一个音；准确率从 0 数上去；过关撒彩带
+function resultFx(r){
+  if(r.fxDone) return; r.fxDone=true;
+  for(let i=1;i<=r.stars;i++) setTimeout(()=>{ tone(72+[0,4,7][i-1],.3,.7); buzz(15); },(.15+i*.3)*1000+250);
+  if(r.pass&&r.stars===3) setTimeout(()=>confetti(),1200);
+  if(!r.pass) setTimeout(()=>{ tone(55,.35,.5); setTimeout(()=>tone(52,.5,.5),180); },700);
+  const el=document.querySelector("[data-count]"); if(!el) return; const to=+el.dataset.count, t0=performance.now();
+  if(RM){ el.textContent=to; return; }
+  (function f(now){ const k=Math.min(1,(now-t0)/900); el.textContent=Math.round(to*(1-(1-k)**3)); if(k<1&&el.isConnected) requestAnimationFrame(f); })(t0);
+}
 function nextStep(){
   const n=stepsOf(F.lv).length;
   if(F.res?.levelUp){ const lv=F.lv; closeFlow(); celebrate(lv); return; }
-  if(F.si+1<n&&stepOpen(F.lv,F.si+1)) openStep(F.lv,F.si+1); else closeFlow();
+  if(F.si+1<n&&stepOpen(F.lv,F.si+1)) openStep(F.lv,F.si+1); else uiClose();
 }
 function celebrate(lv){
   const L2=document.getElementById("layer");
-  L2.innerHTML=`<div class="flow"><div class="flow-in" style="justify-content:center"><div class="result"><div class="stars">★★★</div><h2>${lv===NLV?"你弹完了《失眠的夜》":"第 "+lv+" 关完成"}</h2><p class="muted">${lv===NLV?"从看着方块点键，到自己弹完一首曲子。去弹给朋友听吧。":"解锁第 "+(lv+1)+" 关 · "+L[lv+1].t}</p></div><button class="big moon" data-act="closeCele">${lv===NLV?"太好了":"继续前进"}</button></div></div>`;
-  tone(72,.3); setTimeout(()=>tone(76,.3),120); setTimeout(()=>tone(79,.5),240); setTimeout(()=>tone(84,.8),360);
+  L2.innerHTML=`<div class="flow enter"><div class="flow-in" style="justify-content:center"><div class="result"><div class="halo"></div><div class="stars">${[1,2,3].map(i=>`<span class="s on" style="animation-delay:${.2+i*.25}s">★</span>`).join("")}</div><h2>${lv===NLV?"你弹完了《失眠的夜》":"第 "+lv+" 关完成"}</h2><p class="muted">${lv===NLV?"从看着方块点键，到自己弹完一首曲子。去弹给朋友听吧。":"解锁第 "+(lv+1)+" 关 · "+L[lv+1].t}</p></div><button class="big moon" data-act="closeCele">${lv===NLV?"太好了":"继续前进"}</button></div></div>`;
+  [72,76,79,84].forEach((m,i)=>setTimeout(()=>tone(m,i===3?.9:.3),300+i*130)); setTimeout(()=>confetti(140),500); setTimeout(()=>confetti(80),1300); buzz([20,60,20]);
 }
 function micRow(){ return `<div class="ctl"><button class="chip ${MIC.on?"on":""}" data-act="mic">听音 ${MIC.on?"开":"关"}</button>${midiN?`<span class="chip">已连 MIDI</span>`:""}</div><div class="miclbl"><span id="micHud" class="mono"></span>${MIC.msg&&!MIC.on?esc(MIC.msg):""}</div>`; }
 function renderFlow(){
@@ -789,8 +885,9 @@ function renderFlow(){
   ACT=null;
   if(F.res){
     const r=F.res;
-    body=`<div class="fgrow" style="justify-content:center"><div class="result"><div class="stars">${"★".repeat(r.stars)}<span class="off">${"★".repeat(3-r.stars)}</span></div><h2>${r.title}</h2><p class="muted">${r.msg}</p>${r.slow?.length?`<p class="small">卡得最久：${r.slow.map(([b,w])=>`第 ${b} 小节（${w} 秒）`).join("、")}。<br>把这几小节单独慢练 5 遍。</p>`:""}</div></div>
-    <div class="stack">${r.pass?`<button class="big" data-act="next">继续</button>`:""}<button class="big ghost" data-act="retry">再来一次</button></div>`;
+    const acc=/(\d+)%/.exec(r.title), title=acc?r.title.replace(acc[0],`<span data-count="${acc[1]}">0</span>%`):r.title;
+    body=`<div class="fgrow" style="justify-content:center"><div class="result ${r.pass?"":"fail"}">${r.pass?'<div class="halo"></div>':""}<div class="stars">${[1,2,3].map(i=>`<span class="s ${i<=r.stars?"on":"off"}" style="animation-delay:${.15+i*.3}s">★</span>`).join("")}</div><h2 style="animation-delay:.1s">${title}</h2><p class="muted" style="animation-delay:1.2s">${r.msg}</p>${r.slow?.length?`<p class="small">卡得最久：${r.slow.map(([b,w])=>`第 ${b} 小节（${w} 秒）`).join("、")}。<br>把这几小节单独慢练 5 遍。</p>`:""}</div></div>
+    <div class="stack reveal" style="animation-delay:1.3s">${r.pass?`<button class="big" data-act="next">继续</button>`:""}<button class="big ghost" data-act="retry">再来一次</button></div>`;
   } else if(st.k==="learn"){
     const cards=lessonCards(F.lv), c=Math.min(F.card,cards.length-1);
     body=`<div class="fgrow"><div class="small muted" style="text-align:center">第 ${F.lv} 关 · ${esc(L[F.lv].t)} · ${c+1}/${cards.length}</div><div class="lcard">${cards[c]}</div></div>
@@ -830,7 +927,11 @@ function renderFlow(){
       board="player";
     }
   }
-  lay.innerHTML=`<div class="flow"><div class="flow-in"><div class="fhead"><button class="x" data-act="close" aria-label="退出">✕</button><div class="prog"><i style="width:${pct}%"></i></div><span class="small muted mono">${F.si+1}/${steps.length}</span></div>${body}</div></div>`;
+  lay.innerHTML=`<div class="flow ${F.enter?"enter":""}"><div class="flow-in"><div class="fhead"><button class="x" data-act="close" aria-label="退出">✕</button><div class="prog"><i style="width:${F.pct}%"></i></div><span class="small muted mono">${F.si+1}/${steps.length}</span></div>${body}</div></div>`;
+  F.enter=false;
+  const bar=lay.querySelector(".prog i"); requestAnimationFrame(()=>{ bar.style.width=pct+"%"; }); F.pct=pct;
+  if(F.dir){ anim(lay.querySelector(".lcard"),[{transform:`translateX(${F.dir*44}px)`,opacity:0},{transform:"none",opacity:1}]); F.dir=0; }
+  if(F.res) resultFx(F.res);
   if(board){
     const fallH=board==="player"?Math.max(170,Math.min(380,window.innerHeight-540)):0;
     mountBoard(fallH,board==="player"?110:140);
@@ -873,6 +974,7 @@ function vPath(){
 function openSheet(lv){
   if(!levelOpen(lv)){ toast("先完成第 "+(lv-1)+" 关"); return; }
   const steps=stepsOf(lv), next=steps.findIndex((_,i)=>stars(lv,i)<1);
+  pushNav();
   $("layer").innerHTML=`<div class="scrim" data-act="sheetClose"></div><div class="sheet"><div class="stack">
   <div><div class="small muted">第 ${lv} 关</div><h2>${L[lv].t}</h2><p class="small muted">${L[lv].goal}</p></div>
   <div class="steps">${steps.map((s,i)=>{const n=stars(lv,i), open=stepOpen(lv,i);
@@ -954,14 +1056,12 @@ ${text}`;
 document.addEventListener("click",async e=>{
   const t=e.target.closest("button,[data-act]"); if(!t) return;
   const a=t.dataset.act;
-  if(t.dataset.tab){ tab=t.dataset.tab; render(); window.scrollTo({top:0}); return; }
+  if(t.dataset.tab){ const ch=tab!==t.dataset.tab; tab=t.dataset.tab; render(); window.scrollTo({top:0}); if(ch) anim($("app"),[{opacity:0,transform:"translateY(10px)"},{opacity:1,transform:"none"}]); return; }
   if(t.dataset.lv){ openSheet(+t.dataset.lv); return; }
-  if(t.dataset.step){ const [lv,i]=t.dataset.step.split(":").map(Number); if(!stepOpen(lv,i)){toast("先完成前面的步骤");return;} $("layer").innerHTML=""; openStep(lv,i); return; }
-  if(a==="sheetClose"){ $("layer").innerHTML=""; return; }
-  if(a==="closeCele"){ $("layer").innerHTML=""; render.scrolled=false; render(); return; }
-  if(a==="close"){ closeFlow(); return; }
-  if(a==="cnext"){ F.card++; renderFlow(); return; }
-  if(a==="cprev"){ F.card=Math.max(0,F.card-1); renderFlow(); return; }
+  if(t.dataset.step){ const [lv,i]=t.dataset.step.split(":").map(Number); if(!stepOpen(lv,i)){toast("先完成前面的步骤");return;} openStep(lv,i); return; }
+  if(a==="sheetClose"||a==="closeCele"||a==="close"){ uiClose(); return; }
+  if(a==="cnext"){ F.card++; F.dir=1; renderFlow(); return; }
+  if(a==="cprev"){ F.card=Math.max(0,F.card-1); F.dir=-1; renderFlow(); return; }
   if(a==="cdone"){ stepPass(3); return; }
   if(a==="next"){ nextStep(); return; }
   if(a==="retry"){ openStep(F.lv,F.si); return; }
