@@ -157,6 +157,18 @@ button{touch-action:manipulation}
 .result{position:relative;isolation:isolate}
 .reveal{animation:up .4s both}
 #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:70}
+.pl,.pl-main,.pl-side{display:grid;gap:14px;align-content:start}
+@media (orientation:landscape) and (max-height:559px){
+  .flow-in{max-width:none;gap:8px;padding-block:6px calc(6px + env(safe-area-inset-bottom,0px))}
+  .fhead{grid-template-columns:32px 1fr auto}.x{width:32px;height:32px}
+  .pl{grid-template-columns:1fr 200px;gap:12px}.pl-main,.pl-side{gap:8px}
+  .pl-main>p{display:none}
+  .stage-wrap{padding:6px}
+  .pl-side .big{font-size:16px;padding:10px 12px}
+  .pl-side .row{flex-wrap:wrap!important}.pl-side .row .big{width:100%!important}
+  .fgrow{gap:8px}.say{font-size:19px}.qprompt{min-height:90px}.lcard{padding:14px 18px;font-size:16px}
+  .result{padding-block:6px}.result .stars{font-size:44px}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.result .stars .s{opacity:1}}
 </style>
 
@@ -555,7 +567,9 @@ function micFrame(now){
   let best=null,bs=0;
   if(rms>.004){ for(let m=36;m<=96;m++){ const a=hsum(m); if(a.ok&&rose(m)&&a.s>bs){bs=a.s;best=m;} }
     // 高八度的音能解释差不多的能量，就选高八度（避免 G4 被认成 G3、G2）
-    while(best!=null&&best+12<=96){ const u=hsum(best+12); if(u.ok&&rose(best+12)&&u.s>.8*hsum(best).s) best+=12; else break; }
+    // 但如果这个音的第 3、5 泛音（高八度的音没有的）也在响，说明真是这个低音（例如 C3 的基音很弱，不能因此认成 C4）
+    while(best!=null&&best+12<=96){ const u=hsum(best+12), f=440*2**((best-69)/12), odd=Math.max(binDb(f*3),binDb(f*5));
+      if(u.ok&&rose(best+12)&&u.s>.8*hsum(best).s&&odd<u.pk-18) best+=12; else break; }
     if(best!=null&&hsum(best).pk<MIC.floor+MIC.sens) best=null; }
   // 同一个音连续 4 帧才算数；每次按键（起音）只报一个音，然后一直显示到下一次按键
   if(best!=null&&best===MIC.cand) MIC.candN++; else {MIC.cand=best; MIC.candN=1;}
@@ -808,6 +822,12 @@ function mountBoard(fallH,keyH,lo,hi){
   BD.setRange(lo??48,hi??72);
 }
 
+/* ===================== 横屏 ===================== */
+// 手机横过来（高度很矮）时：练习画面左右分栏，下落区占满高度
+const LAND=()=>innerWidth>innerHeight&&innerHeight<560;
+let wasLand=LAND();
+window.addEventListener("resize",()=>{ if(LAND()!==wasLand){ wasLand=LAND(); if(F.open) renderFlow(); else if(tab==="room") render(); } });
+
 /* ===================== 动效 ===================== */
 const RM=matchMedia("(prefers-reduced-motion: reduce)").matches;
 function anim(el,kf,o){ if(!RM&&el?.animate) el.animate(kf,{duration:240,easing:"cubic-bezier(.2,.8,.2,1)",...o}); }
@@ -915,15 +935,15 @@ function renderFlow(){
     if(emptySong||need){
       body=`<div class="fgrow" style="justify-content:center"><div class="lcard"><p>${emptySong?"「我的曲谱」还是空的。":"「我的曲谱」只有 "+compile(S.song).notes.length+" 个音，这个挑战至少要 "+b.need+" 个。"}</p><p>先去底部「练琴房」→「我的曲谱」，把《失眠的夜》录进去（看不懂怎么写，用 AI 教练的「简谱转练琴格式」）。</p></div></div><button class="big" data-act="toRoom">去录曲谱</button>`;
     } else {
-      body=`<div class="small muted" style="text-align:center">${boss?"挑战":"练习"} · ${esc(P.key==="song"?S.song.name||"我的曲谱":P.ex.n)}</div>
+      body=`<div class="pl"><div class="pl-main"><div class="small muted" style="text-align:center">${boss?"挑战":"练习"} · ${esc(P.key==="song"?S.song.name||"我的曲谱":P.ex.n)}</div>
       ${boss?`<p class="small" style="text-align:center;color:var(--moon)">${b.mode==="timing"?"音符不会等你，在它碰到金线时按下去。":""}准确率 ${b.min}% 过关</p>`:(P.ex.tip?`<p class="small muted" style="text-align:center">${esc(P.ex.tip)}</p>`:"")}
-      <div class="stage-wrap"><canvas id="bd" tabindex="0" aria-label="下落音符和琴键"></canvas></div>
-      <div class="hud" id="hud"></div>
+      <div class="stage-wrap"><canvas id="bd" tabindex="0" aria-label="下落音符和琴键"></canvas></div></div>
+      <div class="pl-side"><div class="hud" id="hud"></div>
       <div class="ctl">${!boss&&both?["r","l","both"].map(h=>`<button class="chip ${P.hand===h?"on":""}" data-hand="${h}">${{r:"右手",l:"左手",both:"双手"}[h]}</button>`).join(""):""}
         ${boss?"":`<button class="chip" data-act="slower">慢</button><span class="chip mono">${Math.round(P.speed*100)}%</span><button class="chip" data-act="faster">快</button>`}
         <button class="chip ${P.metro?"on":""}" data-act="metro">节拍器</button></div>
       ${micRow()}
-      <div class="row" style="flex-wrap:nowrap"><button class="big ghost" style="width:40%" data-act="demo">${P.mode==="demo"&&P.playing?"停止":"听示范"}</button><button class="big" id="playBtn" data-act="play">开始弹</button></div>`;
+      <div class="row" style="flex-wrap:nowrap"><button class="big ghost" style="width:40%" data-act="demo">${P.mode==="demo"&&P.playing?"停止":"听示范"}</button><button class="big" id="playBtn" data-act="play">开始弹</button></div></div></div>`;
       board="player";
     }
   }
@@ -933,8 +953,8 @@ function renderFlow(){
   if(F.dir){ anim(lay.querySelector(".lcard"),[{transform:`translateX(${F.dir*44}px)`,opacity:0},{transform:"none",opacity:1}]); F.dir=0; }
   if(F.res) resultFx(F.res);
   if(board){
-    const fallH=board==="player"?Math.max(170,Math.min(380,window.innerHeight-540)):0;
-    mountBoard(fallH,board==="player"?110:140);
+    const fallH=board==="player"?(LAND()?Math.max(90,innerHeight-210):Math.max(170,Math.min(380,innerHeight-540))):0;
+    mountBoard(fallH,board==="player"?(LAND()?96:110):(LAND()?100:140));
     ACT=board;
     if(board==="player"){ fitRange(P.notes); hud(); }
     if(board==="try"){ tryLoad(T.i); }
