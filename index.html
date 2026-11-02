@@ -91,6 +91,8 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .lcard b{color:var(--moon);font-weight:600}
 .lcard ul,.lcard ol{margin:0;padding-left:22px}
 .lcard a{color:var(--rh)}
+.fig{display:block;margin:10px auto 0;text-align:center;line-height:1.4}.fig svg{display:block;width:100%;height:auto;margin:0 auto;font-family:var(--f-body)}
+.figcap{display:block;margin-top:6px;font-size:13px;color:var(--muted)}.figrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px;align-items:end}.figrow>span{display:grid;gap:2px}.figrow .fig{margin:0}.figrow b{font-size:14px}
 .kbd{font-family:var(--f-mono);background:var(--bg3);padding:0 6px;border-radius:5px;font-size:.88em}
 .say{font-family:var(--f-display);font-size:24px;text-align:center;line-height:1.4}
 .fb{text-align:center;min-height:26px;font-weight:600}
@@ -195,12 +197,84 @@ const WORLDS=[
 const arp=(r,f,o,times=1)=>(`${r}:0.5 ${f}:0.5 ${o}:0.5 ${f}:0.5 `).repeat(2*times);
 const djL=(oct,n=4)=>(`${oct}:1 `).repeat(n);
 const djR=(ch,n=4)=>(`0:0.5 ${ch}:0.5 `).repeat(n);
+/* ===== 讲解卡片用的小图（SVG） ===== */
+const FC={rh:"#3DDBC8",lh:"#B79BFF",moon:"#FFD36E",dim:"#5C6390",ink:"#EEF0FF",mu:"#9BA1CB"};
+const figWrap=(svg,cap)=>`<span class="fig">${svg}${cap?`<span class="figcap">${cap}</span>`:""}</span>`;
+const isBlk=m=>[1,3,6,8,10].includes(((m%12)+12)%12);
+// lo..hi 必须是白键；marks {midi:"标签"} 或 {midi:{t,c}}；o.top=[[m1,m2,"文字"]] 画在上方的括号；o.names 白键都写音名
+function kb(lo,hi,marks={},o={}){
+  const ww=24,wh=86,bw=15,bh=54, whites=[]; for(let m=lo;m<=hi;m++) if(!isBlk(m)) whites.push(m);
+  const W=whites.length*ww, hasBl=Object.keys(marks).some(k=>isBlk(+k)), top=(o.top?.length?26:0)+(hasBl?16:0), H=top+wh+2;
+  const mk=m=>{const v=marks[m]; return v==null?null:typeof v==="object"?v:{t:v};};
+  const cx=m=>isBlk(m)?(whites.indexOf(m-1)+1)*ww:whites.indexOf(m)*ww+ww/2;
+  let s=`<svg viewBox="-1 0 ${W+2} ${H}" style="max-width:${Math.min(W*1.5,460)}px" role="img" aria-label="琴键示意图">`;
+  whites.forEach((m,i)=>{const k=mk(m), c=k?FC[k.c||o.c||"rh"]:"#F8F6EE";
+    s+=`<rect x="${i*ww+.5}" y="${top}" width="${ww-1}" height="${wh}" rx="3" fill="${c}" stroke="#20253F"/>`;
+    const t=k?.t??(o.names?"CDEFGAB"["024579B".indexOf("0123456789AB"[m%12])]:"");
+    if(t!=="") s+=`<text x="${i*ww+ww/2}" y="${top+wh-9}" text-anchor="middle" font-size="${String(t).length>2?9:12}" font-weight="700" fill="${k?"#0B0E1F":"#6A6F8E"}">${t}</text>`;
+  });
+  for(let m=lo;m<=hi;m++) if(isBlk(m)&&m>lo){const k=mk(m), x=cx(m)-bw/2;
+    s+=`<rect x="${x}" y="${top}" width="${bw}" height="${bh}" rx="2" fill="${k?FC[k.c||o.c||"rh"]:"#151826"}"/>`;
+    if(k) s+=`<text x="${x+bw/2}" y="${top-4}" text-anchor="middle" font-size="10" font-weight="700" fill="${FC[k.c||o.c||"rh"]}">${k.t}</text>`;}
+  (o.top||[]).forEach(([a,b,t])=>{const x1=cx(a),x2=cx(b),y=20;
+    s+=`<path d="M${x1} ${y+6}V${y}H${x2}V${y+6}" fill="none" stroke="${FC.moon}" stroke-width="1.5"/><text x="${(x1+x2)/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="${FC.moon}">${t}</text>`;});
+  return figWrap(s+"</svg>",o.cap);
+}
+// 节奏格：rows=[{n:"名字",v:[长度 或 [长度,文字,透明度]]}]，一行 4 拍；透明度 0 = 空（休止/不弹）
+function beats(rows,cap,o={}){
+  const bw=56,lw=o.lw??64,rh=30,W=lw+4*bw,H=18+rows.length*(rh+8);
+  let s=`<svg viewBox="0 0 ${W} ${H}" style="max-width:${W*1.3}px" role="img" aria-label="节奏示意图">`;
+  for(let i=0;i<4;i++) s+=`<text x="${lw+i*bw+4}" y="12" font-size="11" fill="${FC.mu}">${i+1}</text>`;
+  for(let i=0;i<=4;i++) s+=`<line x1="${lw+i*bw}" x2="${lw+i*bw}" y1="15" y2="${H}" stroke="#2A3060" stroke-width="${i%4?1:2}"/>`;
+  rows.forEach((r,j)=>{const y=18+j*(rh+8); let x=lw;
+    s+=`<text x="0" y="${y+rh/2+4}" font-size="12" fill="${FC.ink}">${r.n}</text>`;
+    r.v.forEach(e=>{const [l,t,a]=Array.isArray(e)?e:[e]; const w=l*bw;
+      if(a===0){ if(t) s+=`<text x="${x+w/2}" y="${y+rh/2+4}" text-anchor="middle" font-size="11" fill="${FC.dim}">${t}</text>`; }
+      else if(l<0){ s+=`<rect x="${x-l*bw*0+2}" y="${y+2}" width="${-w-4}" height="${rh-4}" rx="6" fill="none" stroke="${FC.dim}" stroke-dasharray="4 3"/><text x="${x-w/2}" y="${y+rh/2+4}" text-anchor="middle" font-size="11" fill="${FC.mu}">${t??"休"}</text>`; x-=w; return; }
+      else s+=`<rect x="${x+2}" y="${y+2}" width="${w-4}" height="${rh-4}" rx="6" fill="${r.c?FC[r.c]:FC.rh}" opacity="${a??1}"/>${t?`<text x="${x+w/2}" y="${y+rh/2+4}" text-anchor="middle" font-size="12" font-weight="700" fill="#0B0E1F">${t}</text>`:""}`;
+      x+=w;});
+  });
+  return figWrap(s+"</svg>",cap);
+}
+// 五线谱上一串上行的音，线上的音黄色、间里的音青色，下面写音名
+function staffRow(clef,cap){
+  const tr=clef==="treble", base=tr?30:18, from=tr?28:18, to=tr?38:30, gap=12, bottom=82, x0=58, dx=20;
+  const W=x0+(to-from+1)*dx+10, H=118; let s=`<svg viewBox="0 0 ${W} ${H}" style="max-width:${W*1.3}px" role="img" aria-label="${tr?"高音":"低音"}谱号的线和间">`;
+  for(let i=0;i<5;i++) s+=`<line x1="4" x2="${W-4}" y1="${bottom-i*gap}" y2="${bottom-i*gap}" stroke="${FC.ink}" stroke-width="1"/>`;
+  s+=tr?`<text x="6" y="${bottom+10}" font-size="58" font-family="'Noto Music',serif" fill="${FC.ink}">𝄞</text>`:`<text x="8" y="${bottom-20}" font-size="40" font-family="'Noto Music',serif" fill="${FC.ink}">𝄢</text>`;
+  for(let idx=from,i=0;idx<=to;idx++,i++){const x=x0+i*dx, y=bottom-(idx-base)*gap/2, line=(idx-base)%2===0, c=line?FC.moon:FC.rh;
+    if(idx<base&&line||idx>base+8&&line) s+=`<line x1="${x-11}" x2="${x+11}" y1="${y}" y2="${y}" stroke="${FC.ink}"/>`;
+    s+=`<ellipse cx="${x}" cy="${y}" rx="7" ry="5.2" transform="rotate(-20 ${x} ${y})" fill="${c}"/><text x="${x}" y="${H-4}" text-anchor="middle" font-size="12" font-weight="700" fill="${c}">${"CDEFGAB"[((idx%7)+7)%7]}</text>`;}
+  return figWrap(s+"</svg>",cap);
+}
+// 两只手的手指编号（手心朝下看）
+function hands(){
+  const fing=[[2,30],[3,22],[4,28],[5,40]]; // 手指号, 指尖 y
+  const one=(ox,left)=>{ const X=(x,w)=>left?ox+130-(x-ox)-w:x; let s=`<rect x="${X(ox+20,92)}" y="62" width="92" height="46" rx="20" fill="#1C2247" stroke="${FC.mu}"/>`;
+    fing.forEach(([n,y],i)=>{const x=X(ox+22+i*22,18); s+=`<rect x="${x}" y="${y}" width="18" height="${74-y}" rx="9" fill="#1C2247" stroke="${FC.mu}"/><text x="${x+9}" y="${y+15}" text-anchor="middle" font-size="13" font-weight="700" fill="${FC.moon}">${n}</text>`;});
+    const tx=X(ox,30); s+=`<rect x="${tx}" y="74" width="30" height="18" rx="9" fill="#1C2247" stroke="${FC.mu}"/><text x="${tx+(left?20:10)}" y="87" text-anchor="middle" font-size="13" font-weight="700" fill="${FC.moon}">1</text>`;
+    return s+`<text x="${ox+65}" y="128" text-anchor="middle" font-size="12" fill="${FC.mu}">${left?"左手":"右手"}</text>`;};
+  return figWrap(`<svg viewBox="0 0 290 134" style="max-width:360px" role="img" aria-label="手指编号：大拇指是 1，小指是 5">${one(0,true)}${one(155,false)}</svg>`,"两只手都是大拇指 = 1，小指 = 5（手心朝下看）");
+}
+// 踏板：换和弦时抬一下再踩
+function pedalFig(){
+  const W=300; let s=`<svg viewBox="0 0 ${W} 108" style="max-width:400px" role="img" aria-label="换和弦时抬一下踏板再踩下">`;
+  s+=`<rect x="40" y="6" width="124" height="28" rx="6" fill="${FC.rh}"/><text x="102" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0B0E1F">C 和弦</text>`;
+  s+=`<rect x="168" y="6" width="124" height="28" rx="6" fill="${FC.lh}"/><text x="230" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0B0E1F">F 和弦</text>`;
+  s+=`<text x="0" y="25" font-size="12" fill="${FC.ink}">手</text><text x="0" y="80" font-size="12" fill="${FC.ink}">踏板</text>`;
+  s+=`<path d="M40 60V86H170V58H178V86H292" fill="none" stroke="${FC.moon}" stroke-width="3" stroke-linejoin="round"/>`;
+  s+=`<text x="104" y="102" text-anchor="middle" font-size="11" fill="${FC.mu}">踩住</text><text x="174" y="52" text-anchor="middle" font-size="11" fill="${FC.moon}">换和弦：抬一下再踩</text><text x="236" y="102" text-anchor="middle" font-size="11" fill="${FC.mu}">踩住</text>`;
+  return figWrap(s+"</svg>","线在下面 = 踩住，往上跳一下 = 抬起再踩");
+}
+const wDn=m=>isBlk(m)?m-1:m, wUp=m=>isBlk(m)?m+1:m;
+const chordRow=(list,cap)=>figWrap(`<span class="figrow">${list.map(([n,ms,c])=>`<span>${kb(wDn(Math.min(...ms)),wUp(Math.max(...ms)),Object.fromEntries(ms.map(m=>[m,{t:"",c}])),{names:true})}<b>${n}</b></span>`).join("")}</span>`,cap);
+
 const L={
 1:{t:"琴键地图",goal:"闭着眼也能找到任何一个 C，右手放在 C 五指位置弹出《欢乐颂》。",
- lesson:`<p><b>黑键是路标。</b>黑键 2 个一组、3 个一组交替排列。<b>2 个黑键左边那个白键就是 C</b>，往右依次是 D E F G A B，然后又回到 C。从一个 C 到下一个 C 叫做<b>一个八度</b>。</p>
-<p><b>中央 C（C4）</b>是离琴中间最近的 C。电子琴 61 键版一般有 5 个 C，从左往右叫 C2 C3 C4 C5 C6，数字越大音越高。练琴房里的键上都标了名字。</p>
-<p><b>手指编号：</b>两只手都是大拇指 = 1，食指 = 2，中指 = 3，无名指 = 4，小指 = 5。谱上写的小数字就是用哪根手指。</p>
-<p><b>C 五指位置：</b>右手 1 指放 C4，2 指 D，3 指 E，4 指 F，5 指 G。每根手指管一个键，不用看手也知道按的是什么。</p>
+ lesson:`<p><b>黑键是路标。</b>黑键 2 个一组、3 个一组交替排列。<b>2 个黑键左边那个白键就是 C</b>，往右依次是 D E F G A B，然后又回到 C。从一个 C 到下一个 C 叫做<b>一个八度</b>。${kb(48,72,{48:{t:"C",c:"moon"},60:{t:"C",c:"moon"},72:{t:"C",c:"moon"}},{names:true,top:[[49,51,"2 个黑键"],[54,58,"3 个黑键"],[61,63,"2 个"],[66,70,"3 个"]],cap:"黄色都是 C：在 2 个黑键的左边。C 到下一个 C = 一个八度"})}</p>
+<p><b>中央 C（C4）</b>是离琴中间最近的 C。电子琴 61 键版一般有 5 个 C，从左往右叫 C2 C3 C4 C5 C6，数字越大音越高。练琴房里的键上都标了名字。${kb(36,84,{36:{t:"C2",c:"dim"},48:{t:"C3",c:"dim"},60:{t:"C4",c:"moon"},72:{t:"C5",c:"dim"},84:{t:"C6",c:"dim"}},{cap:"黄色的 C4 就是中央 C，在琴的中间"})}</p>
+<p><b>手指编号：</b>两只手都是大拇指 = 1，食指 = 2，中指 = 3，无名指 = 4，小指 = 5。谱上写的小数字就是用哪根手指。${hands()}</p>
+<p><b>C 五指位置：</b>右手 1 指放 C4，2 指 D，3 指 E，4 指 F，5 指 G。每根手指管一个键，不用看手也知道按的是什么。${kb(60,72,{60:"1",62:"2",64:"3",65:"4",67:"5"},{cap:"右手 C 五指位置：键上的数字 = 用哪根手指"})}</p>
 <p><b>坐姿与手型：</b>坐在琴凳前半部分，手肘和琴键差不多高，手像轻轻握着一个鸡蛋，用指尖按键，手腕放松不要塌。</p>
 <p class="muted small">你以前跟着视频"看哪里亮就按哪里"，那是在模仿。从今天起换成"知道自己在按什么"：先叫得出键名，再按下去。</p>`,
  ex:[{n:"C 五指上下行",bpm:60,rh:"C D E F G F E D C:4"},
@@ -209,8 +283,8 @@ const L={
  quiz:"white",
  boss:{t:"琴键侦探",c:["闭眼摸黑键，找到 3 个不同的 C，睁眼核对全对","在小测验「白键」模式拿到 9 分以上","不看手，用 C 五指位置在电子琴上弹完整首《欢乐颂》，不停顿"]}},
 2:{t:"节拍与节奏",goal:"跟着节拍器稳定数拍，弹完整首《小星星》不赶不拖。",
- lesson:`<p><b>拍子是音乐的心跳。</b>节拍器每响一下是 1 拍。流行歌几乎都是 <b>4/4 拍</b>：每小节 4 拍，第 1 拍最重，像"<b>强</b> 弱 次强 弱"。</p>
-<ul><li><b>四分音符</b> = 1 拍（数"1"）</li><li><b>二分音符</b> = 2 拍（数"1 2"）</li><li><b>全音符</b> = 4 拍（数"1 2 3 4"）</li><li><b>休止符</b> = 不弹，但拍子照数</li></ul>
+ lesson:`<p><b>拍子是音乐的心跳。</b>节拍器每响一下是 1 拍。流行歌几乎都是 <b>4/4 拍</b>：每小节 4 拍，第 1 拍最重，像"<b>强</b> 弱 次强 弱"。${beats([{n:"一小节",v:[[1,"强",1],[1,"弱",.4],[1,"次强",.7],[1,"弱",.4]]}],"4/4 拍：一小节 4 拍，颜色越深越重")}</p>
+<div><ul><li><b>四分音符</b> = 1 拍（数"1"）</li><li><b>二分音符</b> = 2 拍（数"1 2"）</li><li><b>全音符</b> = 4 拍（数"1 2 3 4"）</li><li><b>休止符</b> = 不弹，但拍子照数</li></ul>${beats([{n:"四分",v:[1,1,1,1]},{n:"二分",v:[2,2]},{n:"全音符",v:[4]},{n:"休止符",v:[1,-1,1,-1]}],"方块越长，按住越久；虚线框 = 不弹，但心里照样数")}</div>
 <p><b>练法：</b>先只拍手、嘴里数"1 2 3 4"，再上琴。按键的瞬间要和"嗒"一起，音要按满时值再抬手，别弹完就跑。</p>
 <p><b>BPM</b> 是每分钟多少拍。60 = 一秒一拍。DJ 版《失眠的夜》大概在 120 以上，所以我们会一步步提速。</p>
 <p class="muted small">练琴房里打开"节拍器"，下落音符的长短就是时值：方块越长按越久。</p>`,
@@ -221,10 +295,10 @@ const L={
  boss:{t:"稳拍者",c:["节拍器 72，拍手数完 8 小节不掉拍","练琴房《小星星》等待模式通关，准确率 90% 以上","关掉练琴房，在电子琴上跟节拍器 80 弹完《小星星》"]}},
 3:{t:"看懂乐谱",goal:"认得简谱和五线谱高音谱号上的音，看谱弹出《两只老虎》。",
  lesson:`<p>《失眠的夜》的谱（虫虫钢琴）通常有<b>简谱</b>和<b>五线谱</b>两种，两种都要会看。</p>
-<p><b>简谱（1=C 时）：</b>1 2 3 4 5 6 7 = C D E F G A B（do re mi fa sol la si）。数字<b>上面加点</b>高八度（C5），<b>下面加点</b>低八度（C3）。数字后面的 <span class="kbd">-</span> 表示多拉 1 拍；数字<b>下面一条横线</b>是半拍，两条是 1/4 拍；<b>右边一个点</b>（附点）表示加长一半。</p>
+<p><b>简谱（1=C 时）：</b>1 2 3 4 5 6 7 = C D E F G A B（do re mi fa sol la si）。数字<b>上面加点</b>高八度（C5），<b>下面加点</b>低八度（C3）。数字后面的 <span class="kbd">-</span> 表示多拉 1 拍；数字<b>下面一条横线</b>是半拍，两条是 1/4 拍；<b>右边一个点</b>（附点）表示加长一半。${kb(48,72,{48:{t:"1",c:"lh"},50:{t:"2",c:"lh"},52:{t:"3",c:"lh"},53:{t:"4",c:"lh"},55:{t:"5",c:"lh"},57:{t:"6",c:"lh"},59:{t:"7",c:"lh"},60:"1",62:"2",64:"3",65:"4",67:"5",69:"6",71:"7",72:{t:"1",c:"moon"}},{cap:"青色 C4–B4 = 1 2 3 4 5 6 7（中音）<br>紫色 = 数字下面加点（低八度），黄色 = 上面加点（高八度）"})}</p>
 <p><b>"1=G"、"1=D" 是什么：</b>表示 1 从哪个键开始。比如 1=G 时，1 就是 G，其他音跟着平移。第 6 关会讲。</p>
-<p><b>五线谱高音谱号（右手）：</b>五条线从下往上是 <b>E G B D F</b>，四个间从下往上是 <b>F A C E</b>。中央 C 在五线下方，要加一条短线。</p>
-<p><b>五线谱低音谱号（左手）：</b>线是 <b>G B D F A</b>，间是 <b>A C E G</b>。第 7 关再细练。</p>
+<p><b>五线谱高音谱号（右手）：</b>五条线从下往上是 <b>E G B D F</b>，四个间从下往上是 <b>F A C E</b>。中央 C 在五线下方，要加一条短线。${staffRow("treble","黄色音在线上（E G B D F），青色音在间里（F A C E）；最左边带短线的是中央 C")}</p>
+<p><b>五线谱低音谱号（左手）：</b>线是 <b>G B D F A</b>，间是 <b>A C E G</b>。第 7 关再细练。${staffRow("bass","黄色在线上（G B D F A），青色在间里（A C E G）；最右边带短线的是中央 C")}</p>
 <p class="muted small">这一关的小测验考简谱，下一关考五线谱。</p>`,
  ex:[{n:"两只老虎",bpm:80,rh:"C D E C | C D E C | E F G:2 | E F G:2 | G:0.5 A:0.5 G:0.5 F:0.5 E C | G:0.5 A:0.5 G:0.5 F:0.5 E C | C G3 C:2 | C G3 C:2",tip:"简谱：1 2 3 1 | 1 2 3 1 | 3 4 5 - | 3 4 5 - | 56 54 3 1 | 56 54 3 1 | 1 5̣ 1 - | 1 5̣ 1 -"},
      {n:"跨八度：低中高",bpm:66,rh:"C3 E3 G3 C4 | E4 G4 C5:2 | C5 G4 E4 C4 | G3 E3 C3:2"}],
@@ -232,7 +306,7 @@ const L={
  boss:{t:"识谱者",c:["小测验「简谱」模式 9 分以上","小测验「五线谱」模式 8 分以上","只看简谱（练琴房提示里那行）在电子琴上弹完《两只老虎》"]}},
 4:{t:"音阶与穿指",goal:"右手用正确指法弹 C 大调音阶，上下行连贯、不断音。",
  lesson:`<p>五个手指只能管 5 个键。旋律一超出范围，就要<b>穿指</b>和<b>跨指</b>。这是钢琴最核心的技术之一。</p>
-<p><b>C 大调音阶右手指法：</b>上行 <span class="kbd">1 2 3 | 1 2 3 4 5</span>：弹完 E（3 指）后，<b>大拇指从手掌下面穿过去</b>按 F。下行 <span class="kbd">5 4 3 2 1 | 3 2 1</span>：弹完 F（1 指）后，<b>3 指从大拇指上面跨过去</b>按 E。</p>
+<p><b>C 大调音阶右手指法：</b>上行 <span class="kbd">1 2 3 | 1 2 3 4 5</span>：弹完 E（3 指）后，<b>大拇指从手掌下面穿过去</b>按 F。下行 <span class="kbd">5 4 3 2 1 | 3 2 1</span>：弹完 F（1 指）后，<b>3 指从大拇指上面跨过去</b>按 E。${kb(60,72,{60:"1",62:"2",64:"3",65:{t:"1",c:"moon"},67:"2",69:"3",71:"4",72:"5"},{top:[[64,65,"拇指从下面穿过去"]],cap:"上行：1 2 3 弹完 E，黄色的 F 用大拇指"})}</p>
 <p><b>要点：</b>穿指时手腕保持水平往右平移，不要甩手腕；拇指提前准备。先慢到 50 BPM，每个音一样响、一样长。</p>
 <p><b>连奏（legato）：</b>前一个键抬起的同时按下一个键，声音连成一条线。这就是"像唱歌一样弹"。</p>`,
  ex:[{n:"C 大调音阶（一个八度）",bpm:60,rh:"C D E F G A B C5 | C5 B4 A G F E D C:2"},
@@ -241,10 +315,10 @@ const L={
  quiz:"staff",
  boss:{t:"穿指大师",c:["练琴房两个八度音阶，等待模式准确率 90% 以上","电子琴上节拍器 80，C 大调两个八度上下行，指法全对","录一段自己的音阶（手机就行），听回来每个音一样响"]}},
 5:{t:"八分音符与切分",goal:"弹准半拍、附点和切分。这些是 DJ 版律动感的来源。",
- lesson:`<p><b>八分音符</b> = 半拍，一拍里弹两个。数法："<b>1</b> 嗯 <b>2</b> 嗯"，嘴里说"1 &amp; 2 &amp;"。</p>
-<p><b>附点四分音符</b> = 1.5 拍，常和半拍组合："哒——嗒"（长 短）。</p>
-<p><b>切分音：</b>重音落在弱拍或拍子中间，比如"短 长 短"（半拍 1拍 半拍）。流行歌和 DJ 版那种"往前推"的感觉，大部分来自切分。</p>
-<p><b>练法：</b>节拍器响在 1 2 3 4 上，你拍手拍在"&amp;"上（反拍）。能稳定拍反拍，切分就不怕了。</p>
+ lesson:`<p><b>八分音符</b> = 半拍，一拍里弹两个。数法："<b>1</b> 嗯 <b>2</b> 嗯"，嘴里说"1 &amp; 2 &amp;"。${beats([{n:"四分",v:[[1,"1"],[1,"2"],[1,"3"],[1,"4"]]},{n:"八分",v:[[.5,"1"],[.5,"&"],[.5,"2"],[.5,"&"],[.5,"3"],[.5,"&"],[.5,"4"],[.5,"&"]]}],"八分音符：一拍里弹两个")}</p>
+<p><b>附点四分音符</b> = 1.5 拍，常和半拍组合："哒——嗒"（长 短）。${beats([{n:"附点",v:[[1.5,"哒——"],[.5,"嗒"],[1.5,"哒——"],[.5,"嗒"]]}],"附点四分 1.5 拍 + 八分 0.5 拍 = 2 拍")}</p>
+<p><b>切分音：</b>重音落在弱拍或拍子中间，比如"短 长 短"（半拍 1拍 半拍）。流行歌和 DJ 版那种"往前推"的感觉，大部分来自切分。${beats([{n:"切分",v:[[.5,"短"],[1,"长"],[.5,"短"],[.5,"短"],[1,"长"],[.5,"短"]]}],"“长”的音从拍子中间开始，所以有往前推的感觉")}</p>
+<p><b>练法：</b>节拍器响在 1 2 3 4 上，你拍手拍在"&amp;"上（反拍）。能稳定拍反拍，切分就不怕了。${beats([{n:"节拍器",v:[[1,"1"],[1,"2"],[1,"3"],[1,"4"]],c:"lh"},{n:"拍手",v:[[.5,"",0],[.5,"&"],[.5,"",0],[.5,"&"],[.5,"",0],[.5,"&"],[.5,"",0],[.5,"&"]]}],"手拍在两下节拍器的正中间")}</p>
 <p class="muted small">在练琴房：这类节奏先用 50% 速度看清方块长短，再提速。</p>`,
  ex:[{n:"八分音符",bpm:72,rh:"C:0.5 D:0.5 E:0.5 F:0.5 G G | A:0.5 G:0.5 F:0.5 E:0.5 D:2 | E:0.5 F:0.5 G:0.5 A:0.5 G G | F:0.5 E:0.5 D:0.5 E:0.5 C:2"},
      {n:"附点节奏",bpm:72,rh:"C:1.5 D:0.5 E:1.5 F:0.5 | G:4 | A:1.5 G:0.5 F:1.5 E:0.5 | D:4"},
@@ -252,9 +326,9 @@ const L={
  quiz:"staff",
  boss:{t:"律动者",c:["节拍器 80，拍反拍（只拍 &amp;）连续 16 拍不乱","「切分律动」等待模式准确率 90% 以上","「切分律动」示范模式 100% 速度下，在电子琴上跟着一起弹完"]}},
 6:{t:"黑键与调",goal:"认得所有黑键名字，会弹 G 大调和 F 大调，知道怎么用电子琴的移调键。",
- lesson:`<p><b>半音与全音：</b>相邻两个键（包括黑键）差一个<b>半音</b>，隔一个键是<b>全音</b>。E-F、B-C 之间没有黑键，本来就是半音。</p>
-<p><b>升号 #</b> = 升高半音（往右一个键），<b>降号 b</b> = 降低半音（往左一个键）。所以 C# 和 Db 是同一个黑键。</p>
-<p><b>大调音阶公式：</b>全 全 半 全 全 全 半。从 C 开始正好全是白键；从 G 开始要把 F 换成 <b>F#</b>；从 F 开始要把 B 换成 <b>Bb</b>。</p>
+ lesson:`<p><b>半音与全音：</b>相邻两个键（包括黑键）差一个<b>半音</b>，隔一个键是<b>全音</b>。E-F、B-C 之间没有黑键，本来就是半音。${kb(60,72,{64:{t:"E",c:"moon"},65:{t:"F",c:"moon"},71:{t:"B",c:"moon"},72:{t:"C",c:"moon"}},{names:true,top:[[60,61,"半音"],[64,65,"半音"],[67,69,"全音"],[71,72,"半音"]],cap:"E-F、B-C 中间没有黑键，本来就只差半音"})}</p>
+<p><b>升号 #</b> = 升高半音（往右一个键），<b>降号 b</b> = 降低半音（往左一个键）。所以 C# 和 Db 是同一个黑键。${kb(60,64,{60:"C",61:{t:"C# = Db",c:"moon"},62:"D"},{cap:"C 往右一个键 = C#，D 往左一个键 = Db，是同一个黑键"})}</p>
+<p><b>大调音阶公式：</b>全 全 半 全 全 全 半。从 C 开始正好全是白键；从 G 开始要把 F 换成 <b>F#</b>；从 F 开始要把 B 换成 <b>Bb</b>。${kb(60,72,{60:"C",62:"D",64:"E",65:"F",67:"G",69:"A",71:"B",72:"C"},{top:[[60,62,"全"],[62,64,"全"],[64,65,"半"],[65,67,"全"],[67,69,"全"],[69,71,"全"],[71,72,"半"]]})}${kb(67,79,{67:"G",69:"A",71:"B",72:"C",74:"D",76:"E",78:{t:"F#",c:"moon"},79:"G"},{cap:"同一个公式从 G 开始，第 7 个音要用黑键 F#"})}</p>
 <p><b>调号：</b>谱子开头写的 # 或 b，表示整首歌这些音都要升或降。简谱"1=G"就是 G 大调。</p>
 <p><b>电子琴的 Transpose（移调）键：</b>如果谱子的调太难（很多黑键），可以把琴移调，用 C 调指法弹出原调的声音。先查一下你的琴有没有这个键。不过真正的钢琴手两种都要会。</p>`,
  ex:[{n:"G 大调音阶",bpm:60,rh:"G A B C5 D5 E5 F#5 G5:2 | F#5 E5 D5 C5 B4 A4 G4:2",tip:"指法同 C 大调：1 2 3 1 2 3 4 5"},
@@ -264,8 +338,8 @@ const L={
  boss:{t:"黑键行者",c:["小测验「黑键」模式 9 分以上","G 大调音阶等待模式准确率 90% 以上","在电子琴上找到移调（Transpose）功能，并试着把《小星星》移到 G 调弹（从 G 开始）"]}},
 7:{t:"唤醒左手",goal:"左手独立弹低音，读得懂低音谱号。",
  lesson:`<p>左手是伴奏的地基。DJ 版里左手负责低音和律动，比右手还忙。</p>
-<p><b>左手 C 五指位置：</b>小指（5）放 C3，4 指 D，3 指 E，2 指 F，大拇指（1）G。注意<b>编号方向和右手相反</b>。</p>
-<p><b>低音谱号：</b>线从下往上 <b>G B D F A</b>，间 <b>A C E G</b>。中央 C 在低音谱表上方加一线。</p>
+<p><b>左手 C 五指位置：</b>小指（5）放 C3，4 指 D，3 指 E，2 指 F，大拇指（1）G。注意<b>编号方向和右手相反</b>。${kb(48,55,{48:"5",50:"4",52:"3",53:"2",55:"1"},{c:"lh",cap:"左手：小指在 C3，大拇指在 G3（和右手方向相反）"})}</p>
+<p><b>低音谱号：</b>线从下往上 <b>G B D F A</b>，间 <b>A C E G</b>。中央 C 在低音谱表上方加一线。${staffRow("bass","黄色在线上（G B D F A），青色在间里（A C E G）")}</p>
 <p><b>根音：</b>每个和弦最低的那个"名字音"。比如 C 和弦的根音是 C。流行伴奏最简单的弹法，就是左手只弹根音。</p>
 <p class="muted small">"左手根音"练习里的 C → G → A → F，就是第 10 关要学的流行万能和弦进行，先把它的低音弹熟。</p>`,
  ex:[{n:"左手五指上下行",bpm:60,lh:"C3 D3 E3 F3 G3 F3 E3 D3 C3:4"},
@@ -274,9 +348,9 @@ const L={
  quiz:"white",
  boss:{t:"左手觉醒",c:["左手五指上下行在电子琴上不看手弹完","「左手根音」等待模式准确率 90% 以上","左手八度 C-G-A-F 跟节拍器 72 弹 4 轮"]}},
 8:{t:"三和弦",goal:"10 秒内按出 C、Dm、Em、F、G、Am 六个和弦。",
- lesson:`<p><b>三和弦</b> = 根音 + 隔一个音 + 再隔一个音。在白键上就是"<b>按一个、跳一个、按一个、跳一个、按一个</b>"。</p>
-<p><b>大三和弦</b>（明亮）：根音往上 4 个半音 + 3 个半音。C = C E G，F = F A C，G = G B D。</p>
-<p><b>小三和弦</b>（忧伤，写作 m）：3 + 4 个半音。Am = A C E，Dm = D F A，Em = E G B。</p>
+ lesson:`<p><b>三和弦</b> = 根音 + 隔一个音 + 再隔一个音。在白键上就是"<b>按一个、跳一个、按一个、跳一个、按一个</b>"。${kb(60,72,{60:"按",62:{t:"跳",c:"dim"},64:"按",65:{t:"跳",c:"dim"},67:"按"},{cap:"C 和弦：按 C、跳过 D、按 E、跳过 F、按 G"})}</p>
+<p><b>大三和弦</b>（明亮）：根音往上 4 个半音 + 3 个半音。C = C E G，F = F A C，G = G B D。${kb(60,67,{60:"C",64:"E",67:"G"},{top:[[60,64,"4 个半音"],[64,67,"3 个半音"]],cap:"C 大三和弦：明亮"})}</p>
+<p><b>小三和弦</b>（忧伤，写作 m）：3 + 4 个半音。Am = A C E，Dm = D F A，Em = E G B。${kb(57,64,{57:"A",60:"C",64:"E"},{c:"lh",top:[[57,60,"3 个半音"],[60,64,"4 个半音"]],cap:"Am 小三和弦：忧伤"})}</p>
 <p>C 大调里这 6 个和弦能伴奏绝大部分流行歌。《失眠的夜》这种伤感情歌，<b>Am 常常是主角</b>。</p>
 <p><b>手型：</b>右手用 1-3-5 指，左手用 5-3-1 指。三个音必须同时落下、一样响。</p>`,
  ex:[{n:"右手和弦 C F G C",bpm:60,rh:"C4+E4+G4:4 F4+A4+C5:4 G4+B4+D5:4 C5+E5+G5:4"},
@@ -296,8 +370,8 @@ const L={
  boss:{t:"双手觉醒",c:["欢乐颂（双手）等待模式「双手都练」准确率 85% 以上","电子琴上双手弹《欢乐颂》80 BPM 不停","小星星（左手和弦）在电子琴上弹完"]}},
 10:{t:"流行和弦进行",goal:"熟练弹出 1-5-6-4、6-4-1-5、4-5-3-6 三条流行和弦进行。",
  lesson:`<p>流行歌的和弦大多按固定套路走，用数字表示（C 调里 1=C，4=F，5=G，6m=Am，3m=Em）：</p>
-<ul><li><b>1-5-6-4</b>（C G Am F）：万能进行，听起来很"歌"</li><li><b>6-4-1-5</b>（Am F C G）：伤感版，很多抖音热歌都是它</li><li><b>4-5-3-6</b>（F G Em Am）：华语抒情"王道进行"</li></ul>
-<p><b>转位：</b>同一个和弦的三个音可以换顺序。G 和弦弹 B D G（而不是 G B D），手就不用跳那么远，和弦连起来更顺。练习里右手用的都是"就近"的转位。</p>
+<div><ul><li><b>1-5-6-4</b>（C G Am F）：万能进行，听起来很"歌"</li><li><b>6-4-1-5</b>（Am F C G）：伤感版，很多抖音热歌都是它</li><li><b>4-5-3-6</b>（F G Em Am）：华语抒情"王道进行"</li></ul>${chordRow([["C",[60,64,67],"rh"],["G",[59,62,67],"rh"],["Am",[57,60,64],"lh"],["F",[57,60,65],"rh"]],"1-5-6-4 右手就近的按法：几乎不用移动手")}</div>
+<p><b>转位：</b>同一个和弦的三个音可以换顺序。G 和弦弹 B D G（而不是 G B D），手就不用跳那么远，和弦连起来更顺。练习里右手用的都是"就近"的转位。${chordRow([["G：G B D",[55,59,62],"rh"],["G：B D G",[59,62,67],"moon"]],"同样是 G 和弦，右边的按法离 C 和弦更近")}</p>
 <p><b>听歌找和弦：</b>播放《失眠的夜》，一边听一边在琴上按 Am、F、C、G，哪个和弦和歌"融在一起"，就是那一段的和弦。</p>`,
  ex:[{n:"1-5-6-4（C G Am F）",bpm:72,rh:"C4+E4+G4:4 B3+D4+G4:4 A3+C4+E4:4 A3+C4+F4:4",lh:"C3:4 G2:4 A2:4 F2:4"},
      {n:"6-4-1-5（Am F C G）",bpm:72,rh:"A3+C4+E4:4 A3+C4+F4:4 G3+C4+E4:4 G3+B3+D4:4",lh:"A2:4 F2:4 C3:4 G2:4"},
@@ -305,8 +379,8 @@ const L={
  quiz:"chord",
  boss:{t:"和弦行者",c:["三条进行在电子琴上双手各弹 4 轮，换和弦不停顿","不看谱，凭记忆弹出 6-4-1-5","用耳朵在《失眠的夜》里找出至少一段的和弦，写进「我的曲谱」备注"]}},
 11:{t:"分解和弦与 DJ 律动",goal:"左手会两种伴奏型：抒情的分解和弦、DJ 版的八度律动。",
- lesson:`<p><b>分解和弦 1-5-8-5：</b>不把和弦一起按下，而是按"根音、五音、高八度根音、五音"一个个弹，一拍两个。抒情钢琴最常用。左手指法：5 - 2 - 1 - 2。</p>
-<p><b>DJ 八度律动：</b>左手在每一拍上弹八度（"动"），右手在拍子中间弹和弦（"次"），连起来就是"动 次 动 次"。这是 DJ 热搜版的骨架。</p>
+ lesson:`<p><b>分解和弦 1-5-8-5：</b>不把和弦一起按下，而是按"根音、五音、高八度根音、五音"一个个弹，一拍两个。抒情钢琴最常用。左手指法：5 - 2 - 1 - 2。${kb(48,60,{48:"①",55:"②④",60:"③"},{c:"lh",cap:"按 ① ② ③ ④ 的顺序：C3 → G3 → C4 → G3"})}${beats([{n:"左手",v:[[.5,"1"],[.5,"5"],[.5,"8"],[.5,"5"],[.5,"1"],[.5,"5"],[.5,"8"],[.5,"5"]],c:"lh"}],"一拍两个音")}</p>
+<p><b>DJ 八度律动：</b>左手在每一拍上弹八度（"动"），右手在拍子中间弹和弦（"次"），连起来就是"动 次 动 次"。这是 DJ 热搜版的骨架。${beats([{n:"左手",v:[[.5,"动"],[.5,"",0],[.5,"动"],[.5,"",0],[.5,"动"],[.5,"",0],[.5,"动"],[.5,"",0]],c:"lh"},{n:"右手",v:[[.5,"",0],[.5,"次"],[.5,"",0],[.5,"次"],[.5,"",0],[.5,"次"],[.5,"",0],[.5,"次"]]}],"左手在拍子上，右手在拍子中间")}</p>
 <p><b>要点：</b>左手要像鼓一样稳，节奏比音准更重要。DJ 版速度快，先 60 BPM 练稳再一点点加。</p>`,
  ex:[{n:"分解和弦 C G Am F",bpm:66,rh:"E5:4 D5:4 C5:4 C5:4",lh:arp("C3","G3","C4")+arp("G2","D3","G3")+arp("A2","E3","A3")+arp("F2","C3","F3")},
      {n:"DJ 动次律动（Am F C G）",bpm:80,rh:djR("A4+C5+E5")+djR("A4+C5+F5")+djR("G4+C5+E5")+djR("G4+B4+D5"),lh:djL("A2+A3")+djL("F2+F3")+djL("C2+C3")+djL("G2+G3")},
@@ -314,7 +388,7 @@ const L={
  quiz:"chord",
  boss:{t:"律动制造机",c:["分解和弦 C G Am F 在电子琴上 72 BPM 弹 4 轮","「DJ 动次律动」等待模式双手准确率 85% 以上","电子琴上用 DJ 律动弹 6-4-1-5，100 BPM 坚持 1 分钟"]}},
 12:{t:"踏板、力度与表现",goal:"会用延音，弹出强弱变化。原创小曲双手完整演奏。",
- lesson:`<p><b>延音踏板 / Sustain：</b>踩下后抬手声音也不断，和弦会连成一片。电子琴如果没接踏板，面板上一般有 Sustain 按钮。<b>换和弦时要"抬一下再踩"</b>，否则声音会糊。</p>
+ lesson:`<p><b>延音踏板 / Sustain：</b>踩下后抬手声音也不断，和弦会连成一片。电子琴如果没接踏板，面板上一般有 Sustain 按钮。<b>换和弦时要"抬一下再踩"</b>，否则声音会糊。${pedalFig()}</p>
 <p><b>力度：</b>电子琴开了 Touch Response（力度感应）后，按得重声音就大。p = 弱，mf = 中强，f = 强。主歌轻、副歌强，歌曲就有了起伏。</p>
 <p><b>旋律要比伴奏响：</b>右手旋律稍重，左手伴奏轻一点，这样听起来更像在"唱"。</p>
 <p class="muted small">这一关的原创小曲用到了前面所有技能：音阶、八分音符、附点、和弦进行、左手分解。弹完它，你就具备弹《失眠的夜》的全部基本功了。</p>`,
@@ -483,7 +557,7 @@ function tick(strong){
 }
 
 /* ===================== 键盘画布 ===================== */
-function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+const CSSV={}; function css(v){return CSSV[v]??=getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
 function makeBoard(canvas,{fallH=0,keyH=110,onPress}){
   const B={canvas,fallH,keyH,lo:48,hi:84,lay:null,W:0,onPress,flash:new Map(),good:new Map(),bad:new Map(),hint:new Set(),labels:true};
   B.setRange=(lo,hi)=>{B.lo=lo;B.hi=hi;B.resize();};
@@ -621,10 +695,13 @@ let wake=null;
 function wakeOn(){try{navigator.wakeLock?.request("screen").then(w=>wake=w).catch(()=>{});}catch(e){}}
 function play(){ ac(); if(P.finished) reset(); P.playing=true; P.last=performance.now(); if(P.groups[0]&&!P.groups[0].armed) P.groups[0].armed=P.last; wakeOn(); hud(); }
 function stop(){ if(P.playing) save(); P.playing=false; hud(); }
-function advanceGroup(now){ const g=P.groups[P.gi]; if(g.waitFrom) g.waited=(now-g.waitFrom)/1000; P.gi++; const n=P.groups[P.gi]; if(n) n.armed=now+60; }
+function advanceGroup(now){ const g=P.groups[P.gi]; if(g.waitFrom){ g.waited=(now-g.waitFrom)/1000; P.ramp=now; } P.gi++; const n=P.groups[P.gi]; if(n) n.armed=now+60; }
 function playerTick(now,dt){
   if(!P.playing) return;
-  let nt=P.tb+dt*P.bpm/60*P.speed, g=P.groups[P.gi];
+  let g=P.groups[P.gi], k=1;
+  // wait mode: glide into the stop over the last 0.3 beat and ease back up after a hit, instead of a hard stop/start
+  if(P.mode==="wait"){ if(g&&g.hit.size<g.ms.size&&P.tb<g.s) k=Math.max(.25,Math.min(1,(g.s-P.tb)/.3)); k=Math.min(k,.35+(now-(P.ramp||0))/350); }
+  let nt=P.tb+dt*P.bpm/60*P.speed*Math.min(1,k);
   if(P.mode==="wait"&&g&&nt>=g.s){ nt=g.s; if(!g.waitFrom) g.waitFrom=now; }
   if(P.mode==="timing") while(g&&nt>g.s+WIN){ if(g.hit.size<g.ms.size){ if(P.combo>=5) P.fx.push({m:null,t:now,txt:"连对中断"}); P.combo=0; } advanceGroup(now); g=P.groups[P.gi]; }
   P.sec+=dt;
