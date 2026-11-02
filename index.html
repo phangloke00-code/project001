@@ -107,6 +107,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 .answers{display:grid;grid-template-columns:repeat(auto-fit,minmax(56px,1fr));gap:8px}
 .answers button{background:var(--bg3);border-radius:12px;padding:12px 0;font-family:var(--f-mono);font-size:17px;box-shadow:0 3px 0 #0A0D22}
 .qprompt{display:grid;place-items:center;min-height:130px;background:var(--bg2);border-radius:18px;padding:12px}
+@media (orientation:portrait) and (max-height:700px){.qprompt{min-height:64px;padding:8px}.qz .say{font-size:20px}.flow-in,.fgrow{gap:10px}.qz .answers button{padding:9px 0}}
 .ctl{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .miclbl{font-size:12px;color:var(--muted);text-align:center;min-height:18px}
 
@@ -166,7 +167,9 @@ button{touch-action:manipulation}
   .stage-wrap{padding:6px}
   .pl-side .big{font-size:16px;padding:10px 12px}
   .pl-side .row{flex-wrap:wrap!important}.pl-side .row .big{width:100%!important}
-  .fgrow{gap:8px}.say{font-size:19px}.qprompt{min-height:90px}.lcard{padding:14px 18px;font-size:16px}
+  .fgrow{gap:8px}.say{font-size:19px}.qprompt{min-height:90px}
+  .qz{display:grid;grid-template-columns:1fr 230px;align-content:start;column-gap:12px}.qz>*{grid-column:2}.qz>.stage-wrap{grid-column:1;grid-row:1/span 9;align-self:start}
+  .qz .qprompt{min-height:0;padding:8px}.qz .answers{grid-template-columns:repeat(4,1fr);gap:6px}.qz .answers button{padding:8px 0}.lcard{padding:14px 18px;font-size:16px}
   .result{padding-block:6px}.result .stars{font-size:44px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.result .stars .s{opacity:1}}
@@ -742,7 +745,7 @@ const Q={mode:"white",i:0,score:0,cur:null,sel:new Set(),locked:false,over:false
 const rnd=a=>a[Math.floor(Math.random()*a.length)];
 function qStart(mode){ Object.assign(Q,{mode,i:0,score:0,over:false}); qNew(false); }
 function qNew(draw=true){
-  Q.sel=new Set(); Q.locked=false;
+  Q.sel=new Set(); Q.locked=false; Q.at=performance.now();
   const w4=[60,62,64,65,67,69,71], bl=[61,63,66,68,70];
   if(Q.mode==="white") Q.cur={m:rnd([...w4,...w4.map(x=>x-12),72])};
   if(Q.mode==="black") Q.cur={m:rnd([...bl,...bl.map(x=>x-12)])};
@@ -769,6 +772,14 @@ function qPress(m){
   if(Q.mode==="chord"){ Q.sel.has(m)?Q.sel.delete(m):Q.sel.add(m); BD.hint=new Set(Q.sel); const el=document.getElementById("qsel"); if(el) el.textContent=[...Q.sel].sort((a,b)=>a-b).map(nameOf).join(" ")||"还没选";
     const pcs=new Set([...Q.sel].map(x=>x%12)); if(Q.sel.size>=3&&Q.cur.pcs.every(x=>pcs.has(x))&&pcs.size===3) qAnswer(true,""); }
 }
+// mic can mishear (noise, the answer tone's tail): a wrong mic note only hints, never costs the question
+function qMic(m){
+  if(Q.over||Q.locked||!Q.cur||performance.now()-(Q.at||0)<600) return;
+  const ok=Q.mode==="jianpu"?m===Q.cur.m:m%12===Q.cur.m%12;
+  if(Q.mode==="chord"||ok) return qPress(m);
+  mark(m,false); const fb=document.getElementById("fb");
+  if(fb){ fb.className="fb"; fb.textContent=`听到 ${nameOf(m)}，不是它，再弹一次（不算错）`; retrig(fb,"pop"); }
+}
 function qChordCheck(){ const pcs=new Set([...Q.sel].map(m=>m%12)); qAnswer(pcs.size===3&&Q.cur.pcs.every(x=>pcs.has(x)),Q.cur.pcs.map(pc=>NAMES[pc]).join(" ")); }
 function staffSVG(m){
   const letter=[0,0,1,1,2,3,3,4,4,5,5,6][m%12], idx=(Math.floor(m/12)-1)*7+letter, gap=12, bottom=96;
@@ -790,7 +801,7 @@ function input(m,src){
   if(src!=="screen"&&src!=="kbd") BD?.flash.set(m,performance.now()+300);
   if(ACT==="player") playerKey(m); else if(ACT==="try") tryHit(m); else if(ACT==="quiz") qPress(m);
 }
-function micNote(m,now){ BD?.flash.set(m,now+450); if(ACT==="try") tryHit(m); else if(ACT==="quiz") qPress(m); }
+function micNote(m,now){ BD?.flash.set(m,now+450); if(ACT==="try") tryHit(m); else if(ACT==="quiz") qMic(m); }
 const KEYMAP={a:0,w:1,s:2,e:3,d:4,f:5,t:6,g:7,y:8,h:9,u:10,j:11,k:12,o:13,l:14,p:15,";":16};
 let kbOct=0;
 document.addEventListener("keydown",e=>{
@@ -914,7 +925,7 @@ function renderFlow(){
     <div class="row" style="flex-wrap:nowrap">${c>0?`<button class="big ghost" style="width:40%" data-act="cprev">上一张</button>`:""}<button class="big" data-act="${c+1<cards.length?"cnext":"cdone"}">${c+1<cards.length?"下一张":"学会了"}</button></div>`;
   } else if(st.k==="try"){
     const t=T.list[T.i];
-    body=`<div class="fgrow"><div class="small muted" style="text-align:center">试一试 · ${T.i+1}/${T.list.length}</div><p class="say">${esc(t.say)}</p><div class="fb" id="fb"></div>
+    body=`<div class="fgrow qz"><div class="small muted" style="text-align:center">试一试 · ${T.i+1}/${T.list.length}</div><p class="say">${esc(t.say)}</p><div class="fb" id="fb"></div>
     <div class="stage-wrap"><canvas id="bd" aria-label="琴键"></canvas></div>${micRow()}<p class="small muted" style="text-align:center">在你自己的琴上弹（开听音），或者点屏幕上的键</p></div>`;
     board="try";
   } else if(st.k==="quiz"){
@@ -925,7 +936,7 @@ function renderFlow(){
     if(Q.mode==="staff") prompt=`<div style="color:var(--ink)">${staffSVG(c.m)}</div>`;
     if(Q.mode==="jianpu") prompt=`<div style="text-align:center"><div class="small muted">1=C，弹出这个音</div><span class="jp">${c.deg+1}${c.oct===5?'<i class="dot" style="top:2px"></i>':c.oct===3?'<i class="dot" style="bottom:2px"></i>':""}</span></div>`;
     if(Q.mode==="chord"){ prompt=`<div style="text-align:center"><div class="small muted">按出这个和弦的三个音</div><div class="jp" style="font-family:var(--f-display)">${c.name}</div></div>`; ans=`<div class="row" style="justify-content:center"><span class="small">已选：<b class="mono" id="qsel">还没选</b></span><button class="chip" data-act="qok">确定</button><button class="chip" data-act="qclr">清空</button></div>`; }
-    body=`<div class="fgrow"><div class="small muted" style="text-align:center">小测验 · ${QMODES[Q.mode]} · 第 ${Q.i+1}/10 题 · 对 ${Q.score}</div><div class="qprompt">${prompt}</div><div class="fb" id="fb"></div>${ans}
+    body=`<div class="fgrow qz"><div class="small muted" style="text-align:center">小测验 · ${QMODES[Q.mode]} · 第 ${Q.i+1}/10 题 · 对 ${Q.score}</div><div class="qprompt">${prompt}</div><div class="fb" id="fb"></div>${ans}
     <div class="stage-wrap"><canvas id="bd" aria-label="琴键"></canvas></div>${micRow()}</div>`;
     board="quiz";
   } else {
@@ -954,7 +965,11 @@ function renderFlow(){
   if(F.res) resultFx(F.res);
   if(board){
     const fallH=board==="player"?(LAND()?Math.max(90,innerHeight-210):Math.max(170,Math.min(380,innerHeight-540))):0;
-    mountBoard(fallH,board==="player"?(LAND()?96:110):(LAND()?100:140));
+    const keyH=board==="player"?(LAND()?96:110):(LAND()?Math.min(200,innerHeight-90):140);
+    mountBoard(fallH,keyH);
+    // small screens: shrink the keys until the whole step fits without scrolling
+    const fl=lay.querySelector(".flow"), ov=fl.scrollHeight-fl.clientHeight;
+    if(ov>0&&board!=="player") mountBoard(0,Math.max(70,keyH-ov));
     ACT=board;
     if(board==="player"){ fitRange(P.notes); hud(); }
     if(board==="try"){ tryLoad(T.i); }
