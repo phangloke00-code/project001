@@ -82,7 +82,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-vis
 /* flow (full screen) */
 .flow{position:fixed;inset:0;z-index:50;background:var(--bg);overflow:auto;padding-top:env(safe-area-inset-top,0px)}
 .flow-in{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;gap:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px calc(20px + env(safe-area-inset-bottom,0px))}
-.fhead{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center}
+.fhead{display:grid;grid-template-columns:36px 1fr auto 36px;gap:12px;align-items:center}
 .x{width:36px;height:36px;border-radius:50%;background:var(--bg3);font-size:18px;line-height:1}
 .prog{height:10px;background:var(--bg3);border-radius:5px;overflow:hidden}
 .prog i{display:block;height:100%;background:var(--rh);border-radius:5px;transition:width .3s}
@@ -160,7 +160,7 @@ button{touch-action:manipulation}
 .pl,.pl-main,.pl-side{display:grid;gap:14px;align-content:start}
 @media (orientation:landscape) and (max-height:559px){
   .flow-in{max-width:none;gap:8px;padding-block:6px calc(6px + env(safe-area-inset-bottom,0px))}
-  .fhead{grid-template-columns:32px 1fr auto}.x{width:32px;height:32px}
+  .fhead{grid-template-columns:32px 1fr auto 32px}.x{width:32px;height:32px}
   .pl{grid-template-columns:1fr 200px;gap:12px}.pl-main,.pl-side{gap:8px}
   .pl-main>p{display:none}
   .stage-wrap{padding:6px}
@@ -947,7 +947,7 @@ function renderFlow(){
       board="player";
     }
   }
-  lay.innerHTML=`<div class="flow ${F.enter?"enter":""}"><div class="flow-in"><div class="fhead"><button class="x" data-act="close" aria-label="退出">✕</button><div class="prog"><i style="width:${F.pct}%"></i></div><span class="small muted mono">${F.si+1}/${steps.length}</span></div>${body}</div></div>`;
+  lay.innerHTML=`<div class="flow ${F.enter?"enter":""}"><div class="flow-in"><div class="fhead"><button class="x" data-act="close" aria-label="退出">✕</button><div class="prog"><i style="width:${F.pct}%"></i></div><span class="small muted mono">${F.si+1}/${steps.length}</span>${fsBtn()}</div>${body}</div></div>`;
   F.enter=false;
   const bar=lay.querySelector(".prog i"); requestAnimationFrame(()=>{ bar.style.width=pct+"%"; }); F.pct=pct;
   if(F.dir){ anim(lay.querySelector(".lcard"),[{transform:`translateX(${F.dir*44}px)`,opacity:0},{transform:"none",opacity:1}]); F.dir=0; }
@@ -970,11 +970,21 @@ const ICONS={
   me:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>'};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-function toast(msg){const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,2200);}
+const fsEl=()=>document.fullscreenElement||document.webkitFullscreenElement;
+const fsBtn=()=>`<button class="x fsb" data-act="fs" aria-label="${fsEl()?"退出全屏":"全屏"}">${fsEl()?"⤡":"⛶"}</button>`;
+function fsToggle(){ const d=document, e=d.documentElement;
+  if(fsEl()){ (d.exitFullscreen||d.webkitExitFullscreen).call(d); return; }
+  const go=e.requestFullscreen||e.webkitRequestFullscreen;
+  // iPhone Safari has no page fullscreen API; home-screen web app is the only way to hide the URL bar
+  if(!go){ toast("iPhone 不支持网页全屏：点 Safari 分享按钮 →「添加到主屏幕」，从主屏幕图标打开就没有网址栏"); return; }
+  Promise.resolve(go.call(e)).catch(()=>toast("浏览器不允许全屏，请在 Safari/Chrome 里直接打开网址"));
+}
+["fullscreenchange","webkitfullscreenchange"].forEach(ev=>document.addEventListener(ev,()=>document.querySelectorAll(".fsb").forEach(b=>{b.textContent=fsEl()?"⤡":"⛶";b.setAttribute("aria-label",fsEl()?"退出全屏":"全屏");})));
+function toast(msg){const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>t.hidden=true,msg.length>30?5000:2200);}
 function rerender(){ if(F.open) renderFlow(); else render(); }
 function topBar(){
   const m=todayMin(), p=Math.min(100,Math.round(100*m/S.goal));
-  return `<div class="top"><h1>琴键闯关</h1><div class="row"><span class="chip" title="连续练琴天数">连续 <b class="mono">${streak()}</b> 天</span><div class="ring" style="--p:${p}" title="今日目标 ${S.goal} 分钟"><span>${m}/${S.goal}</span></div></div></div>`;
+  return `<div class="top"><h1>琴键闯关</h1><div class="row">${fsBtn()}<span class="chip" title="连续练琴天数">连续 <b class="mono">${streak()}</b> 天</span><div class="ring" style="--p:${p}" title="今日目标 ${S.goal} 分钟"><span>${m}/${S.goal}</span></div></div></div>`;
 }
 function vPath(){
   const cur=curLv(), done=WORLDS.flatMap(w=>w.lv).filter(levelDone).length, off=[0,70,95,70,0,-70,-95,-70];
@@ -1079,6 +1089,7 @@ document.addEventListener("click",async e=>{
   if(t.dataset.tab){ const ch=tab!==t.dataset.tab; tab=t.dataset.tab; render(); window.scrollTo({top:0}); if(ch) anim($("app"),[{opacity:0,transform:"translateY(10px)"},{opacity:1,transform:"none"}]); return; }
   if(t.dataset.lv){ openSheet(+t.dataset.lv); return; }
   if(t.dataset.step){ const [lv,i]=t.dataset.step.split(":").map(Number); if(!stepOpen(lv,i)){toast("先完成前面的步骤");return;} openStep(lv,i); return; }
+  if(a==="fs"){ fsToggle(); return; }
   if(a==="sheetClose"||a==="closeCele"||a==="close"){ uiClose(); return; }
   if(a==="cnext"){ F.card++; F.dir=1; renderFlow(); return; }
   if(a==="cprev"){ F.card=Math.max(0,F.card-1); F.dir=-1; renderFlow(); return; }
