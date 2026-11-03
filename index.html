@@ -3,13 +3,13 @@
 <title>琴键闯关</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=IBM+Plex+Mono:wght@500;600&family=Noto+Music&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&family=IBM+Plex+Mono:wght@500;600&family=Noto+Music&display=swap">
 <style>
 /* Layout: a phone-width column (max 520px). Home is a vertical night-sky path of level nodes; each level opens a full-screen step flow (learn → try → play → quiz → challenge). Bottom nav switches 路线 / 练琴房 / 我的. Single dark "night" theme on purpose — the target song is 失眠的夜. */
 :root{
   --bg:#0B0E1F; --bg2:#141936; --bg3:#1C2247; --line:#2A3060; --ink:#EEF0FF; --muted:#9BA1CB; --dim:#5C6390;
   --moon:#FFD36E; --moon-ink:#2B2104; --rh:#3DDBC8; --rh-ink:#03201C; --lh:#B79BFF; --good:#5BE39A; --bad:#FF7F7F; --stage:#060815;
-  --f-display:"ZCOOL KuaiLe","PingFang SC","Microsoft YaHei",sans-serif;
+  --f-display:"ZCOOL QingKe HuangYou","PingFang SC","Microsoft YaHei",sans-serif;
   --f-body:-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   color-scheme:dark;
@@ -487,8 +487,9 @@ const dkey=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const today=()=>dkey(new Date());
 const stars=(lv,i)=>S.st[lv+"-"+i]||0;
 const levelDone=lv=>stepsOf(lv).every((_,i)=>stars(lv,i)>=1);
-const levelOpen=lv=>lv===1||levelDone(lv-1);
-const stepOpen=(lv,i)=>levelOpen(lv)&&(i===0||stars(lv,i-1)>=1);
+const UNLOCK_ALL=true; // 预览用：全部关卡和步骤都可进入；改回 false 恢复闯关解锁
+const levelOpen=lv=>UNLOCK_ALL||lv===1||levelDone(lv-1);
+const stepOpen=(lv,i)=>UNLOCK_ALL||levelOpen(lv)&&(i===0||stars(lv,i-1)>=1);
 function curLv(){for(let lv=1;lv<=NLV;lv++) if(!levelDone(lv)) return lv; return NLV;}
 const allDone=()=>levelDone(NLV);
 const totalStars=()=>Object.values(S.st).reduce((a,b)=>a+b,0);
