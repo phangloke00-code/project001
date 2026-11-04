@@ -38,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.5 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.6 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -134,7 +134,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=2.5"></script>
+<script src="core.js?v=2.6"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -161,11 +161,11 @@ function loadPiano(){
   for(let o=0;o<=8;o++) for(const n in N){ const m=12*(o+1)+N[n]; if(m<21||m>108) continue;
     fetch(`piano/${n}${o}.mp3`).then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(buf=>PIANO[m]=buf).catch(()=>{}); }
 }
-function click(when,accent){ const a=ac(), t=a.currentTime+when, o=a.createOscillator(), g=a.createGain(); o.frequency.value=accent?1760:1175;
+function click(when,accent){ appSound(accent?93:86,when); const a=ac(), t=a.currentTime+when, o=a.createOscillator(), g=a.createGain(); o.frequency.value=accent?1760:1175;
   g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(accent?.5:.28,t+.002); g.gain.exponentialRampToValueAtTime(.0001,t+.05); o.connect(g); g.connect(master); o.start(t); o.stop(t+.06); }
 function tone(m,dur=.5,vel=.8,when=0){
-  if(vel<=0) return;
-  const a=ac(), t0=a.currentTime+when, end=t0+Math.max(dur,.12);
+  if(vel<=0) return; appSound(m,when);
+  const a=ac(), t0=a.currentTime+Math.max(when,.01), end=t0+Math.max(dur,.12); // 至少留 10ms：排晚了淡入会被跳过 → 爆音
   let s=null; for(const k in PIANO) if(s==null||Math.abs(k-m)<Math.abs(s-m)) s=+k;
   const old=VOICE[m]; if(old&&old.end>t0) old.g.gain.setTargetAtTime(0,t0,.03); // 同一个键再弹：先止住上一个（不 cancel，否则增益会跳回去 → 爆音）
   if(s!=null&&Math.abs(s-m)<=3){
@@ -498,11 +498,12 @@ function step(dt,now){
   const g=S.mode==="wait"?S.groups[S.gi]:null, ahead=g?Math.min(nt+.12*S.rate,g.t):nt+.12*S.rate;
   const bg=S.song.beat; if(S.metro&&bg){ let k=S.nextBeat??Math.ceil((S.t-bg.t0)/bg.p-1e-6); for(;bg.t0+k*bg.p<=ahead;k++) click(Math.max(0,(bg.t0+k*bg.p-nt)/S.rate),((k%4)+4)%4===0); S.nextBeat=k; }
   while(S.next<ns.length&&ns[S.next].t<=ahead){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,n.d/S.rate+(S.pedal?n.s??Math.max(0,1.2-n.d/S.rate):0),S.vol[n.h]*Math.min(1.3,(n.v??.75)/.75),Math.max(0,(n.t-nt)/S.rate)); }
-  if(S.mode==="follow"){ const win=WIN*S.rate; while(S.fi<ns.length&&ns[S.fi].t+win<nt){ const n=ns[S.fi++]; if(isUser(n)&&!n.hit){ n.miss=true; if(S.rec){S.rec.miss++;S.rec.missAt.push(+n.t.toFixed(2));} } } }
+  if(S.mode==="follow"){ const win=(WIN+(MIC.on?.45:0))*S.rate; while(S.fi<ns.length&&ns[S.fi].t+win<nt){ const n=ns[S.fi++]; if(isUser(n)&&!n.hit){ n.miss=true; if(S.rec){S.rec.miss++;S.rec.missAt.push(+n.t.toFixed(2));} } } }
   S.t=nt;
   if(MIC.on){ // 麦克风：只确认"该弹的音有没有响"，不判错音（麦克风判错音不可靠）
-    if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&S.t>=g.t-.3*S.rate) for(const m of g.need) if(!g.got.has(m)&&micHas(m,now)) noteOn(m,"mic"); }
-    if(S.mode==="follow") for(let i=S.fi;i<ns.length&&ns[i].t<=S.t+WIN*S.rate;i++){ const n=ns[i]; if(isUser(n)&&!n.hit&&micHas(n.m,now)) noteOn(n.m,"mic"); }
+    if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&S.t>=g.t-.3*S.rate) for(const m of g.need) if(!g.got.has(m)&&micHas(m,now,g.need)) noteOn(m,"mic"); }
+    if(S.mode==="follow"){ const tOf=at=>S.t-(now-at)/1000*S.rate; for(let i=S.fi;i<ns.length&&ns[i].t<=S.t+WIN*S.rate;i++){ const n=ns[i]; if(!isUser(n)||n.hit) continue;
+      const at=micHas(n.m,now,new Set(ns.slice(S.fi,i+8).filter(q=>isUser(q)&&Math.abs(q.t-n.t)<.05).map(q=>q.m)),at=>Math.abs(n.t-tOf(at))<=WIN*S.rate); if(at) noteOn(n.m,"mic",tOf(at)); } }
   }
   if(S.loop&&S.t>=S.loop.b){ const r=S.rec; finishRec(); resetFrom(S.loop.a);
     if(S.autoUp&&r?.acc>=90&&S.rate<1){ setRate(Math.min(1,S.rate+.05)); toast(`这遍 ${r.acc}%，速度提高到 ${Math.round(S.rate*100)}%`); } }
@@ -511,7 +512,7 @@ function step(dt,now){
 
 /* ===================== 输入 ===================== */
 function userVol(){ return S.hand==="both"||S.mode==="demo"?Math.max(S.vol.L,S.vol.R):S.vol[S.hand]; }
-function noteOn(m,src){
+function noteOn(m,src,tAt){ // tAt: song time of the actual press (mic hears it a little late)
   const now=performance.now(); S.user.set(m,now);
   if(src==="key"||src==="tap") tone(m,.5,Math.max(.4,userVol())); // MIDI 琴和真钢琴自己会响
   if(!S.song||!S.playing||S.mode==="demo") return;
@@ -524,9 +525,9 @@ function noteOn(m,src){
       return;
     }
   } else {
-    let best=null, bd=WIN*S.rate;
-    for(let i=S.fi;i<ns.length&&ns[i].t<=S.t+WIN*S.rate;i++){ const n=ns[i]; if(n.m===m&&isUser(n)&&!n.hit&&Math.abs(n.t-S.t)<=bd){bd=Math.abs(n.t-S.t);best=n;} }
-    if(best){ best.hit=true; fx(m,true); if(r){r.hits++;r.errs.push(Math.round((S.t-best.t)/S.rate*1000));} return; }
+    let best=null, bd=WIN*S.rate; const tt=tAt??S.t;
+    for(let i=S.fi;i<ns.length&&ns[i].t<=tt+WIN*S.rate;i++){ const n=ns[i]; if(n.m===m&&isUser(n)&&!n.hit&&Math.abs(n.t-tt)<=bd){bd=Math.abs(n.t-tt);best=n;} }
+    if(best){ best.hit=true; fx(m,true); if(r){r.hits++;r.errs.push(Math.round((tt-best.t)/S.rate*1000));} return; }
   }
   if(src!=="mic"){ fx(m,false); if(r){r.wrong++;r.wrongAt.push(+S.t.toFixed(2));} }
 }
@@ -652,42 +653,99 @@ requestAnimationFrame(frame);
 
 /* ===================== 麦克风听音（沿用 琴键闯关 的检测） ===================== */
 // 已知要弹哪些音，所以只检查"这几个音在不在"：比较目标音（含泛音）和左右半音的能量，再要求有新的按键起音
-const MIC={on:false,an:null,fd:null,td:null,slow:0,onset:0,floor:-100,sens:20,nf:.002,t0:0,E:new Float32Array(128),prevE:new Float32Array(128),pre:null,used:new Map()};
+const MIC={on:false,an:null,fd:null,td:null,slow:0,nf:.002,t0:0,ons:[]};
 async function micToggle(){
   if(MIC.on){ MIC.stream.getTracks().forEach(t=>t.stop()); MIC.on=false; $("micHud").textContent=""; return uiSync(); }
   try{
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     const a=ac(), src=a.createMediaStreamSource(st), an=a.createAnalyser(); an.fftSize=8192; an.smoothingTimeConstant=.3; src.connect(an);
-    Object.assign(MIC,{on:true,stream:st,an,t0:performance.now(),nf:1,pre:null,emitAt:0,fd:new Float32Array(an.frequencyBinCount),td:new Float32Array(an.fftSize)});
+    Object.assign(MIC,{on:true,stream:st,an,t0:performance.now(),nf:1,fb:null,ons:[],lastOn:0,fd:new Float32Array(an.frequencyBinCount),fd2:new Float32Array(an.frequencyBinCount).fill(-200),td:new Float32Array(an.fftSize)});
     toast("麦克风已开启：手机/电脑放近钢琴，环境安静一点更准。用 MIDI 键盘会更准。");
   }catch(e){ toast(inFrame?"这个网页嵌在 claude.ai 里，浏览器不让它用麦克风。用 GitHub Pages 或本地版打开就能听音。":"麦克风没打开："+(e.name==="NotAllowedError"?"浏览器拒绝了权限，在网站设置里允许麦克风再试。":(e.message||e.name))); }
   uiSync();
 }
-function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
-const HW=[1,1,1,1,.8,.7]; // 谐波和：低音基音很弱，靠泛音也能认出来
-function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200,low=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d; if(h<=2&&d>low) low=d;} return {s,pk,lo:10**(low/20),ok:low>=pk-12}; }
-const rose=m=>!MIC.pre||MIC.E[m]>1.3*MIC.pre[m];
-function present(m){ const a=hsum(m); return rose(m)&&a.ok&&a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
-// 一次按键（起音）每个音只算一次，免得上一个音的余音把下一个同音也"弹对"了
-function micHas(m,now){ if(!MIC.onset||now-MIC.onset>400||MIC.used.get(m)===MIC.onset||!present(m)) return false; MIC.used.set(m,MIC.onset); return true; }
+// 只看起音后"新增"的频谱（减掉起音前那一帧，余音和稳定的伴奏就不算），再一个一个找最能解释它的音：
+// 找到一个就把它的泛音扣掉再找下一个，这样 C4 的泛音（C5、G5、E6…）不会被当成另外的音。
+// 程序自己放的声音（伴奏、点按、节拍器）照样会被找出来，但算作"喇叭的"，不算你弹的。
+const APP=[]; // 程序自己发出的音：{m, at(performance.now 毫秒)}
+function appSound(m,when){ if(!MIC.on) return; const lat=(AC.outputLatency||AC.baseLatency||0); APP.push({m,at:performance.now()+(when+lat)*1000}); if(APP.length>200) APP.splice(0,APP.length-200); }
+function partial(D,f){ const bw=AC.sampleRate/MIC.an.fftSize, c=f/bw, r=Math.max(1,c*.015); let mx=0,at=-1; for(let i=Math.max(1,Math.floor(c-r));i<=Math.min(D.length-1,Math.ceil(c+r));i++) if(D[i]>mx){mx=D[i];at=i;} return [mx,at,r]; }
+function pitches(D,noise,echo,pre){
+  const fmax=Math.min(9000,AC.sampleRate/2-100), bw=AC.sampleRate/MIC.an.fftSize, out=[], D0=D.slice(); let first=0, fmx=0; // D0: 扣泛音之前的，用来查低八度
+  const fr=(m,h)=>440*2**((m-69)/12)*h*Math.sqrt(1+.0004*h*h); // 钢琴弦的泛音会略微偏高
+  const wipe=fm=>{ for(let h=1;h<=16&&fr(fm,h)<fmax;h++){ const c=fr(fm,h), r=partial(D,c)[2]; for(let i=Math.max(1,Math.floor(c/bw-r-3));i<=Math.min(D.length-1,Math.ceil(c/bw+r+3));i++) D[i]=0; } };
+  // 喇叭放的音先整个扣掉（和它泛音重合的音分不出是谁弹的，宁可不算）；它的强度也算进"最强的音"，扣完剩下的零碎才不会被当成音
+  echo.forEach(e=>{ let S=0; for(let h=1;h<=8&&fr(e,h)<fmax;h++){ const a=partial(D,fr(e,h))[0]; if(a>4*noise) S+=a; fmx=Math.max(fmx,a); } first=Math.max(first,S); }); echo.forEach(wipe);
+  for(let k=0;k<6;k++){
+    let best=null,bs=0,bpre=0,bmx=0;
+    for(let m=33;m<=100;m++){ const f=440*2**((m-69)/12); let S=0,Sp=0,odd=0,even=0,low=0,mxh=0,nh=0; const P=[];
+      for(let h=1;h<=8&&h*f<fmax;h++){ const [a,at]=partial(D,fr(m,h)); P.push(a); if(at>0) Sp+=pre[at]; if(a>4*noise){S+=a;nh++;} if(h%2)odd+=a;else even+=a; if(h<=2)low=Math.max(low,a); mxh=Math.max(mxh,a); }
+      // 最强的泛音不能比这次最明显的音弱太多（琴锤的杂音会在低音区凑出几个弱泛音，只有 ~9%；轻弹的和弦音也有 20%）；高音区的音几乎只有基音，要求的泛音个数少一些。
+      // 奇次泛音要有（不然是把高八度的音当成了低八度）。E2 以上基音本身要在（不然 C4+E4+G4 会被当成 C3、A3+E4 会被当成 A2）；
+      // 更低的手机收不到基音，改成第二、第三泛音都要在
+      if(mxh<Math.max(30*noise,.15*fmx)||nh<Math.min(m<40?4:m>=81?1:m>=69?2:3,P.length)||(m>=40?P[0]<Math.max(4*noise,(m<48?.1:.05)*mxh)||m<48&&nh<4:low<.2*mxh||P[2]<.1*mxh)||odd<.25*even) continue;
+      // 低八度的音也在响（它的基音 + 奇次泛音 1.5f、2.5f）：真正弹的是低八度那个，F#3 不能被当成 F#4
+      const p0=partial(D0,f)[0], s1=partial(D0,f/2)[0], s3=Math.max(partial(D0,1.5*f)[0],partial(D0,2.5*f)[0]);
+      // 只在低八度那个音手机收得到基音时才这样判断（更低的没有基音，和弦里的五度音会被误当成它的泛音：G3+B3+D4）
+      if(m-12>=48&&s1>.08*p0&&s1>4*noise&&Math.max(s1,s3)>.3*p0) continue;
+      // 更低的：低八度那个音的第 3、5、7 泛音都在才算（和弦里碰巧有五度音凑不齐这三个）—— C#2 不能被当成 C#3
+      if(m-12<48&&m-12>=28&&[1.5,2.5].every(x=>partial(D0,x*f)[0]>.3*p0)&&partial(D0,3.5*f)[0]>.1*p0&&partial(D0,1.5*f)[0]>4*noise) continue;
+      if(S>bs){bs=S;best=m;bpre=Sp;bmx=mxh;}
+    }
+    if(best==null||bs<.15*first) break; first=Math.max(first,bs); fmx=Math.max(fmx,bmx);
+    // 喇叭放的音（低音区可能被认成旁边半音）不算你弹的；新增能量比起音前已经在响的少很多 = 余音起伏，也不算
+    if(![best-1,best,best+1].some(e=>echo.has(e))&&bs>=.5*bpre) out.push({m:best,S:bs});
+    // 扣掉它的泛音（到 16 次，连旁瓣），再找下一个
+    wipe(best);
+  }
+  // 刚好落在别的音第 3/5/7 泛音上的音（低音 C3 + 旋律 E5）会被一起扣掉：它比那个音平常的泛音大得多，就是另外弹的
+  for(const q of out.slice()) [[3,19],[5,28],[7,34]].forEach(([h,d])=>{ const m=q.m+d; if(m>100||out.some(o=>o!==q&&[0,12,19,24,28,31,34,36].includes(m-o.m))||[m-1,m,m+1].some(e=>echo.has(e))) return; // 也是别的音的泛音（叠在一起才大）就不算
+    const ps=[]; for(let j=1;j<=8&&fr(q.m,j)<fmax;j++) if(j!==h) ps.push(partial(D0,fr(q.m,j))[0]); ps.sort((x,y)=>x-y);
+    const a=partial(D0,440*2**((m-69)/12))[0]; if(a>=6*(ps[ps.length>>1]||0)&&a>=.15*fmx&&a>30*noise) out.push({m,S:a}); });
+  return out;
+}
+// 一次起音里，同一个音至少连续 2 帧被认出来才算；一次起音每个音只算一次（免得余音把下一个同音也算对）
+// 每次起音单独记一份：起音前的频谱 pre、每个音被认出的帧数 det、已经算过的音 used。快速连弹时几次起音同时在分析
+// 一次起音里，一个音要被认出至少 4 帧、并且不少于这次最明显那个音的 40% 才算（零星几帧的是杂讯）
+// 快速连弹：一个音在下一次起音之后才第一次出现，它属于下一次起音（不然重复音会被多算一次）；
+// 前一次起音 180ms 内已经认出的同一个音，是同一下（一次按键可能被当成两次起音），不再算
+const micOk=(o,m)=>{ const c=o.det.get(m)||0; if(c<4||c<.4*Math.max(...o.det.values())) return false;
+  const i=MIC.ons.indexOf(o), nx=MIC.ons[i-1], pv=MIC.ons[i+1];
+  if(nx&&o.first.get(m)>=nx.at-80) return false; // 察觉起音会晚 50–80ms
+  if(pv&&o.at-pv.at<180&&(pv.det.get(m)||0)>=4) return false;
+  return true; };
+// 目标里同时有 C4 和 C5（或 G5、C6…）这种"泛音关系"的音：C5 的声音全被 C4 的泛音盖住，分不出来；C4 认出来了就一起算，不然会一直卡住
+// 返回用到的那次起音的时间（performance.now 毫秒），没有就 0。okAt：调用方限制起音时间（跟节奏模式要在判定窗里）
+function micHas(m,now,targets,okAt=()=>true){
+  for(const o of MIC.ons){ if(now-o.at>700||o.used.has(m)||!okAt(o.at)) continue;
+    if(micOk(o,m)||[...targets].some(q=>[12,19,24,28,31].includes(m-q)&&micOk(o,q))){ o.used.add(m); return o.at; } }
+  return 0; }
 function micFrame(now){
   MIC.an.getFloatTimeDomainData(MIC.td); let s=0; const n=1024, td=MIC.td;
   for(let i=td.length-n;i<td.length;i++) s+=td[i]*td[i];
   const rms=Math.sqrt(s/n);
-  MIC.an.getFloatFrequencyData(MIC.fd);
-  const E=MIC.prevE; MIC.prevE=MIC.E; MIC.E=E; for(let m=24;m<=100;m++) E[m]=hsum(m).lo;
-  if(now-MIC.t0<700){ MIC.nf=Math.min(MIC.nf,rms); MIC.slow=rms; return micHud("正在听环境声音，先别弹…"); }
-  MIC.nf=rms<MIC.nf?rms:MIC.nf*1.002;
-  if(rms>Math.max(.006,MIC.nf*4)&&rms>MIC.slow*1.6){ if(now-(MIC.rising||0)>120){ MIC.pre=MIC.prevE.slice(); MIC.onset=now; } MIC.rising=now; }
+  const last=MIC.fd; MIC.fd=MIC.fd2; MIC.fd2=last; MIC.an.getFloatFrequencyData(MIC.fd);
+  const bw=AC.sampleRate/MIC.an.fftSize;
+  // 频谱通量：新冒出来的频率能量 / 原来的总能量。连奏时音量不一定变大，但一定有新的频率
+  let up=0,tot=0; for(let i=Math.round(60/bw);i<4000/bw;i++){ const x=10**(MIC.fd[i]/20), y=10**(last[i]/20); up+=Math.max(0,x-y); tot+=y; }
+  const flux=up/(tot+1e-9);
+  if(now-MIC.t0<700){ MIC.nf=Math.min(MIC.nf,rms); MIC.slow=rms; MIC.fb=Math.min(MIC.fb??1,flux); return micHud("正在听环境声音，先别弹…"); }
+  MIC.nf=rms<MIC.nf?rms:MIC.nf*1.002; MIC.fb=MIC.fb*.97+Math.min(flux,.3)*.03; // 通量的底噪（慢慢跟）
+  // 一次按键：响度突增 或 新频率突增（同时响度也要上升一点：余音衰减时比例会乱跳），从"没触发"变成"触发"的那一刻才算（一次琴锤的起音会持续触发 100ms 左右，只算一次）
+  const trig=rms>Math.max(.004,MIC.nf*3)&&(rms>MIC.slow*1.6||flux>Math.max(.17,2*MIC.fb)&&rms>MIC.slow*1.15), edge=trig&&(MIC.off||0)>=2; MIC.off=trig?0:(MIC.off||0)+1; // 要先停 2 帧才算下一次
+  if(edge&&now-(MIC.lastOn||0)>90){ MIC.lastOn=now; MIC.ons.unshift({at:now,pre:Float32Array.from(last,d=>10**(d/20)),det:new Map(),first:new Map(),used:new Set()}); MIC.ons.length=Math.min(MIC.ons.length,8); }
   MIC.slow=MIC.slow*.9+rms*.1;
-  let fl=0; for(let i=10;i<410;i++) fl+=MIC.fd[i]; MIC.floor=fl/400;
-  let best=null,bs=0;
-  if(rms>.004){ for(let m=28;m<=96;m++){ const a=hsum(m); if(a.ok&&rose(m)&&a.s>bs){bs=a.s;best=m;} }
-    while(best!=null&&best+12<=96){ const u=hsum(best+12), f=440*2**((best-69)/12), odd=Math.max(binDb(f*3),binDb(f*5));
-      if(u.ok&&rose(best+12)&&u.s>.8*hsum(best).s&&odd<u.pk-18) best+=12; else break; }
-    if(best!=null&&hsum(best).pk<MIC.floor+MIC.sens) best=null; }
-  if(best!=null&&best===MIC.cand) MIC.candN++; else {MIC.cand=best; MIC.candN=1;}
-  if(MIC.cand!=null&&MIC.candN>=4&&MIC.onset>(MIC.emitAt||0)&&now-MIC.onset<350&&rose(MIC.cand)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; S.user.set(MIC.cand,now); }
+  // 分析"最新的、已经过了 150ms 的那次起音"（前 150ms 是琴锤的杂音 + 分析窗里还混着按键前的声音）
+  const o=MIC.ons.find(o=>now-o.at>=150);
+  if(o&&now-o.at<600){
+    const fd=MIC.fd, D=new Float32Array(fd.length), lv=[];
+    for(let i=1;i<fd.length;i++){ const a=10**(fd[i]/20); D[i]=Math.max(0,a-o.pre[i]); if(i*bw>60&&i*bw<4000) lv.push(a); }
+    lv.sort((x,y)=>x-y); const noise=lv[lv.length>>1]||1e-6;
+    const echo=new Set(APP.filter(a=>o.at-a.at>-60&&o.at-a.at<250).map(a=>a.m)); MIC.echoTest?.forEach(m=>echo.add(m));
+    const ps=pitches(D,noise,echo,o.pre);
+    for(const p of ps){ o.det.set(p.m,(o.det.get(p.m)||0)+1); if(!o.first.has(p.m)) o.first.set(p.m,now); }
+    MIC.seen=ps; if(ps[0]){ MIC.shown=ps[0].m; MIC.shownAt=now; S.user.set(ps[0].m,now); }
+  }
   if(rms<.003&&now-(MIC.shownAt||0)>800) MIC.shown=null;
   micHud(`🎤 听到：${MIC.shown!=null?PV.nameOf(MIC.shown):"—"}  音量 ${"▮".repeat(Math.min(8,Math.round(rms*120)))}${MIC.nf>.02?"  · 环境偏吵":""}`);
 }
