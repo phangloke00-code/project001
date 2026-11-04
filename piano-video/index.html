@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>落键练琴</title>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>落键练琴</title><meta name="claude:viewport-fit-sides" content="cover">
 <style>
 :root{--bg:#1c1e23;--bg2:#262930;--bg3:#30343d;--line:#3a3f4a;--ink:#eceef3;--muted:#9aa0ad;--acc:#9bd35a;--acc-ink:#15220a;--bad:#ff7272;--good:#6be39a;color-scheme:dark}
 *{box-sizing:border-box}[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
-header{display:flex;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+header{display:flex;gap:8px;align-items:center;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
 h1{font-size:17px;margin:0 auto 0 0;letter-spacing:.5px} h2{font-size:15px;margin:0 0 8px} h3{font-size:14px;margin:14px 0 6px}
 button,select,input{font:inherit;color:inherit}
 button,select{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer;min-height:34px}
@@ -13,7 +14,7 @@ button:hover{border-color:#566}
 button.on,button.pri{background:var(--acc);color:var(--acc-ink);border-color:transparent;font-weight:600}
 input[type=text],input[type=url]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;flex:1;min-width:0}
 input[type=range]{accent-color:var(--acc);flex:1;min-width:80px}
-main>section{padding:12px 16px 40px;max-width:1200px;margin:0 auto}
+main>section{padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1200px;margin:0 auto}
 .card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
 .lbl{display:flex;align-items:center;gap:6px;min-width:200px;flex:1}
@@ -30,6 +31,7 @@ table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:5px 6px;b
 .tl{display:flex;height:34px;gap:1px;align-items:flex-end;background:var(--bg);border-radius:6px;padding:2px;overflow:hidden}.tl>i{flex:1;background:var(--bad);min-height:1px;border-radius:2px 2px 0 0}
 .big{font-size:26px;font-weight:700}
 .stat{display:inline-block;margin:0 18px 6px 0}.stat .muted{display:block;font-size:12px}
+dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:12px;width:min(92vw,420px)}dialog input{width:100%}dialog::backdrop{background:#0008}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
@@ -117,12 +119,16 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 </main>
 <video id="vid" playsinline muted hidden></video>
 <div id="toast" hidden></div>
+<dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <script src="core.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt=t=>{t=Math.max(0,t);return Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0");};
 function toast(msg){const t=$("toast");t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,msg.length>30?6000:2500);}
+// 页面内确认框（嵌入的网页里浏览器的 confirm/prompt 不弹出）
+function ask(msg,def){ const d=$("dlg"),i=$("dlgIn"); $("dlgMsg").textContent=msg; i.hidden=def==null; i.value=def??""; d.returnValue=""; d.showModal(); return new Promise(r=>d.onclose=()=>r(d.returnValue!=="ok"?null:def==null?true:i.value.trim()||null)); }
+const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
 const store={get(k,d){try{const v=localStorage.getItem("pv-"+k);return v?JSON.parse(v):d;}catch(e){return d;}},
   set(k,v){try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}}};
 let songs=store.get("songs",[]);
@@ -151,8 +157,8 @@ document.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   if(b.dataset.go) return show(b.dataset.go);
   if(b.dataset.open!=null) return openSong(songs[+b.dataset.open]);
-  if(b.dataset.del!=null){ const i=+b.dataset.del; if(confirm(`删除《${songs[i].title}》和它的练习记录？`)){ try{localStorage.removeItem("pv-att-"+songs[i].id);}catch(e){} songs.splice(i,1); saveSongs(); renderLib(); } return; }
-  if(b.dataset.ren!=null){ const s=songs[+b.dataset.ren], v=prompt("曲名",s.title); if(v){s.title=v.trim()||s.title; saveSongs(); renderLib();} return; }
+  if(b.dataset.del!=null){ const i=+b.dataset.del; ask(`删除《${songs[i].title}》和它的练习记录？`).then(ok=>{ if(!ok) return; try{localStorage.removeItem("pv-att-"+songs[i].id);}catch(e){} songs.splice(i,1); saveSongs(); renderLib(); }); return; }
+  if(b.dataset.ren!=null){ const s=songs[+b.dataset.ren]; ask("曲名",s.title).then(v=>{ if(v){s.title=v; saveSongs(); renderLib();} }); return; }
   if(b.dataset.mode) return setMode(b.dataset.mode);
   if(b.dataset.hand) return setHand(b.dataset.hand);
   if(b.dataset.loop) { const [a,z]=b.dataset.loop.split(",").map(Number); S.loop={a,b:z}; finishRec(); resetFrom(a); show("play"); return uiSync(); }
@@ -168,8 +174,8 @@ const ACT={
   clrLoop:()=>{S.loop=null;uiSync();},
   fing:()=>{S.fing=!S.fing;uiSync();}, full:()=>{S.full=!S.full;uiSync();},
   mic:micToggle, stats:()=>show("stats"),
-  refing:()=>{ if(confirm("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
-  midi:()=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([PV.toMidi(S.song.notes)],{type:"audio/midi"})); a.download=S.song.title+".mid"; a.click(); },
+  refing:async()=>{ if(await ask("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
+  midi:()=>{ if(inFrame) return toast("这里不能下载文件。导出 MIDI 请用 GitHub Pages 或本地 server.py 打开的版本。"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([PV.toMidi(S.song.notes)],{type:"audio/midi"})); a.download=S.song.title+".mid"; a.click(); },
   stopReplay:()=>{ if(AC) newMaster(); },
 };
 $("file").onchange=async e=>{
@@ -477,7 +483,7 @@ async function micToggle(){
     const a=ac(), src=a.createMediaStreamSource(st), an=a.createAnalyser(); an.fftSize=8192; an.smoothingTimeConstant=.3; src.connect(an);
     Object.assign(MIC,{on:true,stream:st,an,t0:performance.now(),nf:1,pre:null,emitAt:0,fd:new Float32Array(an.frequencyBinCount),td:new Float32Array(an.fftSize)});
     toast("麦克风已开启：手机/电脑放近钢琴，环境安静一点更准。用 MIDI 键盘会更准。");
-  }catch(e){ toast("麦克风没打开："+(e.name==="NotAllowedError"?"浏览器拒绝了权限，在网站设置里允许麦克风再试。":(e.message||e.name))); }
+  }catch(e){ toast(inFrame?"这个网页嵌在 claude.ai 里，浏览器不让它用麦克风。用 GitHub Pages 或本地版打开就能听音。":"麦克风没打开："+(e.name==="NotAllowedError"?"浏览器拒绝了权限，在网站设置里允许麦克风再试。":(e.message||e.name))); }
   uiSync();
 }
 function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
