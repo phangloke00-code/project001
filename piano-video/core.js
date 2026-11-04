@@ -53,10 +53,17 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
     const c = px(k.x); if (!lit(c)) return -1;
     // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
     const same = p => lit(p) && hueDist(p[0], c[0]) < 30;
-    let l = 0, r = 0; while (r < ww && same(px(k.x + r + 1))) r++; while (l < ww && same(px(k.x - l - 1))) l++;
-    const wide = l + r + 1 >= .8 * ww, mid = k.x + (r - l) / 2;
-    // shortcut: a black and the next white key played by the SAME hand at once read as one wide bar, so the black one is missed
-    if (k.black && wide || l + r + 1 < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
+    let l = 0, r = 0; while (r < 2 * ww && same(px(k.x + r + 1))) r++; while (l < 2 * ww && same(px(k.x - l - 1))) l++;
+    const len = l + r + 1, wide = len >= .8 * ww, mid = k.x + (r - l) / 2;
+    if (len < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
+    // a black key inside a wide stretch is usually just a white bar reaching its center -> not lit. But a white bar plus this
+    // black key's bar by the same hand merge into one stretch; black-key bars are drawn darker, so a solidly darker patch
+    // (5 px, not just a soft edge) under the black key's center, in a stretch under two keys wide, is the black key's note
+    if (k.black && wide) {
+      const wn = [keys[i - 1], keys[i + 1]].find(w => w && !w.black && w.x >= k.x - l && w.x <= k.x + r), vw = wn && px(wn.x)[2];
+      const dark = wn && len < 1.6 * ww && [-2, -1, 0, 1, 2].every(o => { const p = px(k.x + o); return same(p) && p[2] < .85 * vw; });
+      return dark ? Math.round(c[0]) : -1;
+    }
     // a narrow stretch belongs to whichever key its middle is nearest: a narrow bar centered on the black key next door is
     // that black key's note, and the rounded (narrower) end of a white bar is not the black key next to it
     const nb = [keys[i - 1], keys[i + 1]].find(b => b && b.black !== k.black && Math.abs(mid - b.x) < Math.abs(mid - k.x));
@@ -167,7 +174,7 @@ function toMidi(notes) {
   const TPS = 960; // 480 ticks per beat at 120 bpm
   const track = (h, ch, tempo) => {
     const ev = [];
-    notes.filter(n => n.h === h).forEach(n => { ev.push([Math.round(n.t * TPS), 0x90 | ch, n.m, 80], [Math.round((n.t + n.d) * TPS), 0x80 | ch, n.m, 0]); });
+    notes.filter(n => n.h === h).forEach(n => { ev.push([Math.round(n.t * TPS), 0x90 | ch, n.m, Math.round((n.v ?? .63) * 127)], [Math.round((n.t + n.d) * TPS), 0x80 | ch, n.m, 0]); });
     ev.sort((a, b) => a[0] - b[0] || (a[1] & 0xf0) - (b[1] & 0xf0)); // note-off before note-on on the same tick
     const out = tempo ? [0, 0xff, 0x51, 3, 0x07, 0xa1, 0x20] : []; let last = 0;
     for (const [t, ...msg] of ev) { out.push(...vlq(t - last), ...msg); last = t; }
@@ -192,19 +199,76 @@ function fromMidi(buf) {
       if (st === 0xf0 || st === 0xf7) { i += rd(); continue; }
       rs = st; const hi = st & 0xf0, ch = st & 15, d1 = b[i++], d2 = hi === 0xc0 || hi === 0xd0 ? 0 : b[i++];
       const k = ch * 128 + d1;
-      if (hi === 0x90 && d2 > 0) (on[k] = on[k] || []).push(tick);
-      else if ((hi === 0x80 || hi === 0x90) && on[k] && on[k].length) raw.push({tr, ch, m: d1, a: on[k].shift(), z: tick});
+      if (hi === 0x90 && d2 > 0) (on[k] = on[k] || []).push([tick, d2]);
+      else if ((hi === 0x80 || hi === 0x90) && on[k] && on[k].length) { const [a, v] = on[k].shift(); raw.push({tr, ch, m: d1, a, v, z: tick}); }
     }
     pos = end;
   }
   tempos.sort((x, y) => x[0] - y[0]); if (!tempos.length || tempos[0][0] > 0) tempos.unshift([0, 500000]);
   const sec = tick => { let s = 0, i = 0; for (; i + 1 < tempos.length && tempos[i + 1][0] <= tick; i++) s += (tempos[i + 1][0] - tempos[i][0]) * tempos[i][1]; return (s + (tick - tempos[i][0]) * tempos[i][1]) / div / 1e6; };
   const trs = [...new Set(raw.map(n => n.tr))].sort((x, y) => x - y);
-  const notes = raw.map(n => ({m: n.m, t: +sec(n.a).toFixed(3), d: +Math.max(.05, sec(n.z) - sec(n.a)).toFixed(3),
+  const notes = raw.map(n => ({m: n.m, t: +sec(n.a).toFixed(3), d: +Math.max(.05, sec(n.z) - sec(n.a)).toFixed(3), v: +(n.v / 127).toFixed(2),
     h: trs.length >= 2 && trs.indexOf(n.tr) < 2 ? (trs.indexOf(n.tr) === 0 ? "R" : "L") : n.m < 60 ? "L" : "R"})); // 1st track = right hand (Synthesia convention)
   return notes.sort((x, y) => x.t - y.t || x.m - y.m);
 }
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi};
+// ---- the video's own sound: line notes up with it, then read how hard each note was played and how long it rang ----
+const HANN = {};
+function bandAmp(x, sr, t, m) { // strength of pitch m (first 3 harmonics) in a ~46 ms window around time t
+  const N = 1024, w = HANN[N] || (HANN[N] = Float32Array.from({length: N}, (_, i) => .5 - .5 * Math.cos(2 * Math.PI * i / (N - 1))));
+  const c = Math.round(t * sr) - N / 2; if (c < 0 || c + N > x.length) return 0;
+  const f = 440 * 2 ** ((m - 69) / 12); let sum = 0;
+  for (let h = 1; h <= 3 && f * h < sr / 2 - 200; h++) {
+    const k = 2 * Math.cos(2 * Math.PI * f * h / sr); let s1 = 0, s2 = 0;
+    for (let i = 0; i < N; i++) { const s0 = x[c + i] * w[i] + k * s1 - s2; s2 = s1; s1 = s0; }
+    sum += Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - k * s1 * s2));
+  }
+  return sum;
+}
+// seconds to add to note times so each note's own pitch starts sounding there (searched within +-range). Uses pitch, not
+// overall loudness: in steady rhythms loudness jumps repeat every beat and would match at the wrong beat too.
+function alignAudio(x, sr, notes, range = .6) {
+  const pick = notes.filter((_, i) => i % Math.max(1, Math.floor(notes.length / 300)) === 0);
+  let best = 0, bs = -Infinity;
+  for (let o = -range; o <= range + 1e-9; o += .02) {
+    let s = 0; for (const n of pick) s += bandAmp(x, sr, n.t + o + .03, n.m) - bandAmp(x, sr, n.t + o - .05, n.m);
+    if (s > bs) { bs = s; best = o; }
+  }
+  return +best.toFixed(2);
+}
+// n.v = how hard (0.3..1, 0.75 = typical for that register), n.s = seconds it keeps ringing after release (pedal), from audio x
+function audioDynamics(x, sr, notes) {
+  const a0 = notes.map(n => Math.max(bandAmp(x, sr, n.t + .03, n.m), bandAmp(x, sr, n.t + .07, n.m)));
+  const med = m => { const v = a0.filter((_, i) => Math.abs(notes[i].m - m) <= 6).sort((a, b) => a - b); return v[v.length >> 1] || 1; }, M = {};
+  notes.forEach((n, i) => {
+    const r = a0[i] / (M[n.m] ??= med(n.m));
+    n.v = +Math.min(1, Math.max(.3, .75 * Math.sqrt(r))).toFixed(2);
+    let s = 0; while (s < 3 && bandAmp(x, sr, n.t + n.d + s + .1, n.m) > .2 * a0[i]) s += .1;
+    n.s = +s.toFixed(1);
+  });
+  return notes;
+}
+
+// Beat grid from note onsets: p = seconds per beat (60..160 BPM), t0 = time of a downbeat, 4 beats per bar.
+// The period whose phase the onsets agree on most wins; the downbeat is the beat slot with the most (and lowest, loudest) notes.
+function beatGrid(notes) {
+  const on = groupByOnset(notes).map(g => ({t: g.t, w: g.notes.length + g.notes.filter(n => n.m < 55).length}));
+  if (on.length < 8) return null;
+  let best = null;
+  const T = on[on.length - 1].t - on[0].t + 1;
+  // fine steps: over a whole song a tiny tempo error adds up, so the true peak is very narrow (step ~ 1/20 cycle drift)
+  for (let p = .375; p <= 1; p *= 1 + .05 * p / T) {
+    let x = 0, y = 0, W = 0; for (const o of on) { const a = 2 * Math.PI * o.t / p; x += o.w * Math.cos(a); y += o.w * Math.sin(a); W += o.w; }
+    const sc = Math.hypot(x, y) / W; if (!best || sc > best.sc + 1e-9) best = {sc, p, ph: Math.atan2(y, x)};
+  }
+  const {p} = best, t0 = ((best.ph / (2 * Math.PI)) * p + p) % p, slot = [0, 0, 0, 0];
+  for (const g of groupByOnset(notes)) { const k = Math.round((g.t - t0) / p); if (Math.abs(g.t - t0 - k * p) < .25 * p) slot[((k % 4) + 4) % 4] += g.notes.length + 3 * g.notes.filter(n => n.m < 45).length; }
+  const d = slot.indexOf(Math.max(...slot));
+  return {p: +p.toFixed(4), t0: +(t0 + d * p).toFixed(3), bpb: 4, bpm: Math.round(60 / p)};
+}
+const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
+const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
+
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>落键练琴</title><meta name="claude:viewport-fit-sides" content="cover">
+<title>落键练琴</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#1d1f24"><meta name="claude:viewport-fit-sides" content="cover">
 <style>
 :root{--bg:#1c1e23;--bg2:#262930;--bg3:#30343d;--line:#3a3f4a;--ink:#eceef3;--muted:#9aa0ad;--acc:#9bd35a;--acc-ink:#15220a;--bad:#ff7272;--good:#6be39a;color-scheme:dark}
 *{box-sizing:border-box}[hidden]{display:none!important}
@@ -25,6 +25,9 @@ main>section{padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-l
 canvas{display:block;max-width:100%}
 #calCv{width:100%;border-radius:8px;background:#000}
 #stage{width:100%;height:min(64vh,680px);border-radius:10px;touch-action:none;background:#2c2e33}
+/* 手机横屏 / 全屏：画面尽量大，标题栏收起 */
+@media (orientation:landscape) and (max-height:520px){ header,#play>.row:first-child{display:none} #stage{height:88vh} }
+:fullscreen #stage{height:84vh} :fullscreen header{display:none}
 #hud{min-height:22px} #sum{margin-top:8px}
 .bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--acc);width:0}
 table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:500}
@@ -35,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.9 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.0 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -46,7 +49,9 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <div class="row"><input id="yt" type="url" placeholder="或粘贴 YouTube 链接"><button data-act="yt">下载并识别</button></div>
     <div id="ytMsg" class="muted"></div>
   </div>
-  <div class="card"><h2>我的曲子</h2><div id="songList"></div></div>
+  <div class="card"><h2>我的曲子</h2><div id="songList"></div>
+    <div class="row" style="margin-top:8px"><button data-act="backup">💾 备份全部（曲子 + 练习记录）</button><input id="bak" type="file" accept=".json,application/json" hidden><button data-act="restore">📂 从备份恢复</button>
+    <span class="muted">曲子只存在这个浏览器里，清除浏览器数据就没了；换手机/电脑时也用备份文件搬过去。</span></div></div>
 </section>
 
 <!-- ================= 校准 + 识别 ================= -->
@@ -71,7 +76,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     </div>
     <div id="calInfo" class="muted"></div>
     <div class="row">
-      <span class="muted">识别速度</span><select id="scanRate"><option value="1">1×（最准）</option><option value="2" selected>2×</option><option value="4">4×（快，可能漏音）</option><option value="bg">后台模式（慢，切走也继续）</option></select>
+      <span class="muted">识别速度</span><select id="scanRate"><option value="fast" selected>极速（推荐，切走也继续）</option><option value="1">1×（最准）</option><option value="2">2×</option><option value="4">4×（快，可能漏音）</option><option value="bg">后台模式（慢，切走也继续）</option></select>
       <span class="muted" id="scanMsg">从头识别到结尾。识别时请停在这个页面，切到别的分页会暂停，回来自动继续。</span>
       <button class="pri" data-act="scan" id="scanBtn">开始识别</button><button data-act="scanStop" id="scanStop" hidden>停止并使用已识别部分</button>
     </div>
@@ -103,8 +108,10 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
   </div>
   <div class="row">
     <button data-act="setA">设 A</button><button data-act="setB">设 B</button><button data-act="clrLoop">取消循环</button><span id="loopV" class="muted"></span>
-    <button data-act="pedal" id="pedalBtn" title="像原曲一样踩着延音踏板：短音也会自然地响一会儿">延音踏板</button><button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
-    <button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
+    <span class="muted">小节</span><input id="barA" type="number" min="1" value="1" style="width:58px"><span class="muted">到</span><input id="barB" type="number" min="1" value="4" style="width:58px"><button data-act="barLoop">🔁 循环这几小节</button>
+    <button data-act="autoUp" id="autoUpBtn" title="循环练习时，一遍准确率达到 90% 就自动加快 5%，直到原速">练熟自动加速</button>
+    <button data-act="metro" id="metroBtn" title="按歌曲的拍子打拍">🥁 节拍器</button><button data-act="countIn" id="countInBtn" title="练习模式开始前先数 4 拍">预备拍</button><button data-act="pedal" id="pedalBtn" title="像原曲一样踩着延音踏板：短音也会自然地响一会儿">延音踏板</button><button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
+    <button data-act="fs" id="fsBtn" title="全屏，手机会转成横屏">⛶ 全屏</button><button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
   </div>
   <div class="row muted">
     暂停时点音符：<select id="editSel"><option value="f">改指法 1→5</option><option value="h">换左右手</option></select>
@@ -125,7 +132,8 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <div id="toast" hidden></div>
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
-<script src="core.js?v=1.9"></script>
+<script src="lib/mp4box.all.min.js"></script>
+<script src="core.js?v=2.0"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -134,6 +142,7 @@ function toast(msg){const t=$("toast");t.textContent=msg;t.hidden=false;clearTim
 // 页面内确认框（嵌入的网页里浏览器的 confirm/prompt 不弹出）
 function ask(msg,def){ const d=$("dlg"),i=$("dlgIn"); $("dlgMsg").textContent=msg; i.hidden=def==null; i.value=def??""; d.returnValue=""; d.showModal(); return new Promise(r=>d.onclose=()=>r(d.returnValue!=="ok"?null:def==null?true:i.value.trim()||null)); }
 const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
+if(!inFrame&&"serviceWorker" in navigator&&location.protocol!=="file:") navigator.serviceWorker.register("sw.js").catch(()=>{}); // 装到主屏幕 + 离线可用
 const store={get(k,d){try{const v=localStorage.getItem("pv-"+k);return v?JSON.parse(v):d;}catch(e){return d;}},
   set(k,v){try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}}};
 let songs=store.get("songs",[]);
@@ -151,6 +160,8 @@ function loadPiano(){
   for(let o=0;o<=8;o++) for(const n in N){ const m=12*(o+1)+N[n]; if(m<21||m>108) continue;
     fetch(`piano/${n}${o}.mp3`).then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(buf=>PIANO[m]=buf).catch(()=>{}); }
 }
+function click(when,accent){ const a=ac(), t=a.currentTime+when, o=a.createOscillator(), g=a.createGain(); o.frequency.value=accent?1760:1175;
+  g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(accent?.5:.28,t+.002); g.gain.exponentialRampToValueAtTime(.0001,t+.05); o.connect(g); g.connect(master); o.start(t); o.stop(t+.06); }
 function tone(m,dur=.5,vel=.8,when=0){
   if(vel<=0) return;
   const a=ac(), t0=a.currentTime+when, end=t0+Math.max(dur,.12);
@@ -194,9 +205,20 @@ const ACT={
   setA:()=>{S.loop={a:S.t,b:Math.max(S.t+1,S.loop?.b??S.song.dur)};uiSync();},
   setB:()=>{ if(!S.loop) S.loop={a:startT(),b:S.t}; else if(S.t>S.loop.a) S.loop.b=S.t; uiSync(); },
   clrLoop:()=>{S.loop=null;uiSync();},
-  fing:()=>{S.fing=!S.fing;uiSync();}, pedal:()=>{S.pedal=!S.pedal;uiSync();}, full:()=>{S.full=!S.full;uiSync();},
+  fing:()=>{S.fing=!S.fing;uiSync();}, pedal:()=>{S.pedal=!S.pedal;uiSync();}, metro:()=>{S.metro=!S.metro;S.nextBeat=null;uiSync();}, countIn:()=>{S.countIn=!S.countIn;uiSync();}, autoUp:()=>{S.autoUp=!S.autoUp;uiSync();},
+  fs:()=>{ const el=document.documentElement, req=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(document.fullscreenElement||document.webkitFullscreenElement) return (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+    if(!req) return toast("这台设备不支持网页全屏（iPhone）：点分享 → 添加到主屏幕，从主屏幕打开就是全屏，再把手机横过来。");
+    Promise.resolve(req.call(el)).then(()=>screen.orientation?.lock?.("landscape")).catch(()=>{}); },
+  barLoop:()=>{ const g=S.song.beat; if(!g) return toast("这首歌找不到拍子，请用 设 A / 设 B。"); const a=Math.max(1,+$("barA").value||1), b=Math.max(a,+$("barB").value||a);
+    S.loop={a:Math.max(0,PV.barTime(g,a)-.05),b:PV.barTime(g,b+1)-.05}; finishRec(); resetFrom(S.loop.a); uiSync(); toast(`循环第 ${a}–${b} 小节`); }, full:()=>{S.full=!S.full;uiSync();},
   mic:micToggle, stats:()=>show("stats"),
   refing:async()=>{ if(await ask("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
+  backup:()=>{ if(inFrame) return toast("这里不能下载文件。备份请用 GitHub Pages 打开的版本。");
+    const data={app:"落键练琴",ver:1,date:Date.now(),set:store.get("set",{}),songs:JSON.parse(localStorage.getItem("pv-songs")||"[]"),att:Object.fromEntries(songs.map(s=>[s.id,store.get("att-"+s.id,[])]))};
+    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));
+    a.download=`piano-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.append(a); a.click(); a.remove(); toast(`已备份 ${data.songs.length} 首曲子`); },
+  restore:()=>$("bak").click(),
   midi:()=>{ if(inFrame) return toast("这里不能下载文件。导出 MIDI 请用 GitHub Pages 或本地 server.py 打开的版本。"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([PV.toMidi(S.song.notes)],{type:"audio/midi"})); a.download=S.song.title+".mid"; a.click(); },
   stopReplay:()=>{ if(AC) newMaster(); },
 };
@@ -206,6 +228,13 @@ $("file").onchange=async e=>{
   if(/\.midi?$/i.test(f.name)){ try{ const notes=PV.fromMidi(await f.arrayBuffer()); if(!notes.length) throw new Error("文件里没有音符"); newSong(title,notes,{L:95,R:355}); }catch(err){ toast("MIDI 读取失败："+err.message); } return; }
   loadVideo(URL.createObjectURL(f),title);
 };
+// 从备份恢复：同一首（id 相同）用备份里的覆盖，其余的加进来；练习记录合并去重
+$("bak").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  try{ const d=JSON.parse(await f.text()); if(d.app!=="落键练琴"||!Array.isArray(d.songs)) throw new Error("不是落键练琴的备份文件");
+    let add=0; for(const s of d.songs){ if(!s?.id||!Array.isArray(s.notes)) continue; const i=songs.findIndex(x=>x.id===s.id); if(i<0){songs.push(s);add++;} else songs[i]=s;
+      const old=store.get("att-"+s.id,[]), seen=new Set(old.map(a=>a.date)); store.set("att-"+s.id,[...old,...(d.att?.[s.id]||[]).filter(a=>!seen.has(a.date))].sort((a,b)=>b.date-a.date).slice(0,60)); }
+    saveSongs(); renderLib(); toast(`已恢复 ${d.songs.length} 首（新增 ${add} 首）`);
+  }catch(err){ toast("恢复失败："+err.message); } };
 async function loadYT(){
   const url=$("yt").value.trim(); if(!url) return toast("先粘贴 YouTube 链接");
   const msg=$("ytMsg"); msg.textContent="下载中…（视频越长越久）";
@@ -293,16 +322,39 @@ for(const [id,k] of [["cTop","top"],["cLine","lineY"],["cX0","x0"],["cX1","x1"],
   $(id).oninput=e=>{ CAL[k]=+e.target.value; if(CAL.hi<=CAL.lo) CAL.hi=Math.min(108,CAL.lo+12); drawCal(); };
 
 const BG_STEP=1/30; // 后台模式每秒读 30 帧
+// 极速模式：用 mp4box 拆出视频的每一帧，交给浏览器的硬件解码器（WebCodecs）直接解码，不用播放也不用一帧帧跳转。
+// 切到别的分页也照样跑。浏览器或视频格式不支持时返回 false，改用后台模式。
+async function fastScan(grab){
+  if(!window.VideoDecoder||!window.MP4Box) return false;
+  const buf=await (await fetch(V.src)).arrayBuffer(); buf.fileStart=0;
+  const mp4=MP4Box.createFile(), info=await new Promise((res,rej)=>{ mp4.onReady=res; mp4.onError=rej; mp4.appendBuffer(buf); mp4.flush(); });
+  const tr=info.videoTracks[0]; if(!tr) return false;
+  let description; for(const e of mp4.getTrackById(tr.id).mdia.minf.stbl.stsd.entries){ const b=e.avcC||e.hvcC||e.vpcC||e.av1C; if(b){ const ds=new DataStream(undefined,0,DataStream.BIG_ENDIAN); b.write(ds); description=new Uint8Array(ds.buffer,8); } }
+  const config={codec:tr.codec,codedWidth:tr.video.width,codedHeight:tr.video.height,description};
+  if(!(await VideoDecoder.isConfigSupported(config)).supported) return false;
+  const samples=[]; mp4.onSamples=(id,u,list)=>samples.push(...list); mp4.setExtractionOptions(tr.id,null,{nbSamples:1e9}); mp4.start(); mp4.flush();
+  if(!samples.length) return false;
+  let err=null; const dec=new VideoDecoder({output:f=>{ try{ grab(f.timestamp/1e6,f); } finally{ f.close(); } }, error:e=>err=e});
+  dec.configure(config);
+  for(const sm of samples){
+    if(SCAN.stop||err) break;
+    dec.decode(new EncodedVideoChunk({type:sm.is_sync?"key":"delta",timestamp:1e6*sm.cts/sm.timescale,duration:1e6*sm.duration/sm.timescale,data:sm.data}));
+    if(dec.decodeQueueSize>24) await new Promise(r=>dec.addEventListener("dequeue",r,{once:true}));
+  }
+  if(!err) await dec.flush().catch(e=>err=e); dec.close();
+  if(err) throw err; return true;
+}
 async function scan(){
   if(!CAL.w) return;
   const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=2;
   const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, upY=upperY()/CAL.scale, sh=Math.max(1,1/CAL.scale), up=[];
   const times=[], frames=[], start=0; let last=-1;
-  SCAN={running:true,stop:false};
+  SCAN={running:true,stop:false}; SCAN.done=()=>{ SCAN.stop=true; };
   if(V.currentTime>0){ V.currentTime=0; await new Promise(r=>V.addEventListener("seeked",r,{once:true})); } $("scanBtn").hidden=true; $("scanStop").hidden=false;
-  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(V,0,upY,V.videoWidth,sh,0,1,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,2).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
+  const grab=(t,src=V)=>{ if(t<=last) return; last=t; sx.drawImage(src,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(src,0,upY,V.videoWidth,sh,0,1,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,2).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
   V.muted=true;
-  if($("scanRate").value==="bg"){
+  if($("scanRate").value==="fast"&&await fastScan(grab).catch(e=>{ console.warn("fast scan",e); return false; })){ /* 极速模式已读完 */ }
+  else if($("scanRate").value==="bg"||$("scanRate").value==="fast"){
     // 后台模式：一帧一帧跳着读。靠 seeked 事件推进，不靠播放，切到别的分页或被全屏游戏挡住也会继续
     SCAN.done=()=>{ SCAN.stop=true; };
     for(let i=0;i*BG_STEP<V.duration&&!SCAN.stop;i++){
@@ -327,6 +379,11 @@ async function scan(){
   const fps=times.length/Math.max(.1,last-start);
   if(fps<18) toast(`识别时每秒只读到 ${fps.toFixed(0)} 帧，快速音符可能漏掉，建议用 1× 重新识别。`);
   const colors=PV.assignHands(notes); notes.forEach(n=>delete n.hue);
+  // 原视频有钢琴声：先把音符对齐到声音，再读出每个音弹得多重、松开后还响多久（踏板）
+  try{ toast("正在分析原视频的声音（力度、踏板）…"); $("scanBar").style.width="100%";
+    const au=await new OfflineAudioContext(1,1,22050).decodeAudioData(await (await fetch(V.src)).arrayBuffer()), x=au.getChannelData(0);
+    const off=PV.alignAudio(x,22050,notes); notes.forEach(n=>n.t+=off); PV.audioDynamics(x,22050,notes);
+  }catch(e){ console.warn("no audio",e); toast("这个视频没有声音（或读不出来），力度和踏板用默认值。"); }
   const t0=notes[0].t-2; if(t0>0) notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // start 2 s before the first note
   newSong(CAL.title,notes,colors);
 }
@@ -334,20 +391,22 @@ async function scan(){
 /* ===================== 播放 / 练习状态 ===================== */
 const WIN=.2; // 跟节奏模式：早/晚 0.2 秒内算弹对
 const cv=$("stage"), cx=cv.getContext("2d");
-const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,pedal:true,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
+const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,pedal:true,metro:false,countIn:true,autoUp:false,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
   store.get("set",{}));
-const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,pedal:S.pedal,full:S.full});
+const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,pedal:S.pedal,metro:S.metro,countIn:S.countIn,autoUp:S.autoUp,full:S.full});
 const isUser=n=>S.mode!=="demo"&&(S.hand==="both"||S.hand===n.h);
 const startT=()=>Math.max(0,(S.song.notes[0]?.t??0)-1.5);
-function openSong(s){ finishRec(); S.song=s; s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); let g0=-1; for(const n of s.notes){ if(n.t-g0<.04) n.t=g0; else g0=n.t; } /* 识别时差一帧的和弦音对齐成同时按下 */ S.loop=null; resetFrom(startT()); $("pTitle").textContent=s.title; $("seek").max=s.dur; $("sum").innerHTML=""; show("play"); uiSync(); }
+function openSong(s){ finishRec(); S.song=s; if(s.beat===undefined){ s.beat=PV.beatGrid(s.notes); saveSongs(); } s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); let g0=-1; for(const n of s.notes){ if(n.t-g0<.04) n.t=g0; else g0=n.t; } /* 识别时差一帧的和弦音对齐成同时按下 */ S.loop=null; resetFrom(startT()); $("pTitle").textContent=s.title; $("seek").max=s.dur; $("sum").innerHTML=""; show("play"); uiSync(); }
 function resetFrom(t){
   const ns=S.song.notes; S.t=t; S.playing&&S.mode!=="demo"&&!S.rec&&(S.rec=newRec());
-  S.next=ns.findIndex(n=>n.t>=t); if(S.next<0) S.next=ns.length; S.fi=S.next;
+  S.next=ns.findIndex(n=>n.t>=t); if(S.next<0) S.next=ns.length; S.fi=S.next; S.nextBeat=null;
   ns.forEach(n=>{n.hit=false;n.miss=false;});
   S.groups=PV.groupByOnset(ns.filter(n=>n.t>=t&&isUser(n))).map(g=>({t:g.t,notes:g.notes,need:new Set(g.notes.map(n=>n.m)),got:new Set()}));
   S.gi=0; S.waiting=false;
 }
-function play(){ if(!S.song) return; ac(); if(S.t>=S.song.dur+.9) resetFrom(startT()); if(S.mode!=="demo"&&!S.rec) S.rec=newRec(); S.playing=true; uiSync(); }
+function play(){ if(!S.song) return; ac(); if(S.t>=S.song.dur+.9) resetFrom(startT()); if(S.mode!=="demo"&&!S.rec) S.rec=newRec();
+  if(S.countIn&&S.mode!=="demo"&&S.song.beat){ const p=S.song.beat.p/S.rate; for(let i=0;i<4;i++) click(.05+i*p,i===0); S.hold=AC.currentTime+.05+4*p; } // 先数 4 拍再开始
+  S.playing=true; uiSync(); }
 function pause(){ if(!S.playing) return; S.playing=false; uiSync(); }
 function setMode(m){ finishRec(); S.mode=m; resetFrom(S.t); uiSync(); }
 function setHand(h){ finishRec(); S.hand=h; resetFrom(S.t); uiSync(); }
@@ -357,7 +416,7 @@ function uiSync(){
   $("playBtn").textContent=S.playing?"⏸ 暂停":"▶ 播放";
   for(const b of document.querySelectorAll("[data-rate]")) b.classList.toggle("on",+b.dataset.rate===S.rate);
   $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R; $("volLV").textContent=Math.round(S.vol.L*100)+"%"; $("volRV").textContent=Math.round(S.vol.R*100)+"%";
-  $("fingBtn").classList.toggle("on",S.fing); $("pedalBtn").classList.toggle("on",S.pedal); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
+  $("fingBtn").classList.toggle("on",S.fing); $("pedalBtn").classList.toggle("on",S.pedal); $("metroBtn").classList.toggle("on",S.metro); $("countInBtn").classList.toggle("on",S.countIn); $("autoUpBtn").classList.toggle("on",S.autoUp); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
   $("loopV").textContent=S.loop?`循环 ${fmt(S.loop.a)}–${fmt(S.loop.b)}`:"";
   saveSet();
 }
@@ -389,6 +448,19 @@ function replay(i){
   const r=store.get("att-"+S.song.id,[])[i]; if(!r) return; ac(); newMaster();
   r.ev.forEach(([,m,rt])=>tone(m,.45,.8,.15+rt/1000)); toast(`回放 ${r.ev.length} 个音（按“停止回放”结束）`);
 }
+// 每天一个点：线 = 当天平均准确率，圆点 = 当天最好的一次；下面写日期和当天最快练到的速度
+function progressSvg(all){
+  const by=new Map(); for(const a of all.slice().reverse()){ const d=new Date(a.date), k=`${d.getMonth()+1}/${d.getDate()}`; if(!by.has(k)) by.set(k,[]); by.get(k).push(a); }
+  const days=[...by].slice(-14), n=days.length, X=i=>n<2?150:24+i*266/(n-1), Y=v=>66-v*.56;
+  const avg=days.map(([,l])=>l.reduce((x,a)=>x+a.acc,0)/l.length), best=days.map(([,l])=>Math.max(...l.map(a=>a.acc)));
+  const up=n>1?Math.round(avg[n-1]-avg[0]):0;
+  return `<svg viewBox="0 0 300 96" style="width:100%;max-width:560px;height:135px;font:8px sans-serif">
+    ${[0,50,100].map(v=>`<line x1="0" x2="300" y1="${Y(v)}" y2="${Y(v)}" stroke="#3a3f4a"/><text x="0" y="${Y(v)-2}" fill="#8a909c">${v}%</text>`).join("")}
+    <polyline points="${avg.map((v,i)=>X(i)+","+Y(v)).join(" ")}" fill="none" stroke="#9bd35a" stroke-width="2" stroke-linejoin="round"/>
+    ${best.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="2.5" fill="#ffd84a"><title>${days[i][0]} 最好 ${v}%，平均 ${Math.round(avg[i])}%，${days[i][1].length} 次</title></circle>`).join("")}
+    ${days.map(([k,l],i)=>`<text x="${X(i)}" y="80" fill="#8a909c" text-anchor="middle">${k}</text><text x="${X(i)}" y="90" fill="#5f6570" text-anchor="middle">${Math.round(100*Math.max(...l.map(a=>a.rate)))}%</text>`).join("")}
+  </svg><div class="muted">绿线 = 每天平均，黄点 = 每天最好；日期下面是那天最快练到的速度${n>1?` · 平均准确率比 ${days[0][0]} ${up>=0?"提高":"下降"}了 ${Math.abs(up)}%`:""}</div>`;
+}
 function renderStats(){
   const s=S.song; if(!s) return; $("sTitle").textContent="📊 "+s.title;
   const all=store.get("att-"+s.id,[]);
@@ -397,13 +469,10 @@ function renderStats(){
   const B=4, bins=new Map(), add=(t,w)=>{const k=Math.floor(t/B);bins.set(k,(bins.get(k)||0)+w);};
   for(const a of all.slice(0,10)){ a.wrongAt.forEach(t=>add(t,1)); a.missAt.forEach(t=>add(t,1)); a.waits.forEach(([t,w])=>w>1.5&&add(t,Math.min(3,w/1.5))); }
   const nb=Math.ceil(s.dur/B), mx=Math.max(1,...bins.values()), top=[...bins].sort((a,b)=>b[1]-a[1]).slice(0,3);
-  const pts=all.slice(0,30).reverse().map((a,i,arr)=>`${(i/Math.max(1,arr.length-1)*300).toFixed(1)},${(60-a.acc*.56).toFixed(1)}`).join(" ");
   const days=new Set(all.map(a=>new Date(a.date).toDateString())).size, mins=Math.round(all.reduce((x,a)=>x+(a.sec||0),0)/60);
   $("statsBody").innerHTML=`
   <div class="card"><h3 style="margin-top:0">最近一次</h3>${summaryHtml(all[0])}</div>
-  <div class="card"><h3 style="margin-top:0">进步曲线（准确率，最近 30 次）</h3>
-    <svg viewBox="-4 -4 308 68" style="width:100%;max-width:520px;height:90px"><line x1="0" y1="4" x2="300" y2="4" stroke="#3a3f4a"/><line x1="0" y1="32" x2="300" y2="32" stroke="#3a3f4a"/><line x1="0" y1="60" x2="300" y2="60" stroke="#3a3f4a"/>
-    <polyline points="${pts}" fill="none" stroke="#9bd35a" stroke-width="2.5" stroke-linejoin="round"/></svg>
+  <div class="card"><h3 style="margin-top:0">进步曲线（每天的平均和最好准确率）</h3>${progressSvg(all)}
     <div class="muted">共练 ${all.length} 次 · ${days} 天 · 约 ${mins} 分钟</div></div>
   <div class="card"><h3 style="margin-top:0">哪里最难（最近 10 次的错音、漏音、卡住）</h3>
     <div class="tl">${Array.from({length:nb},(_,k)=>`<i style="height:${(100*(bins.get(k)||0)/mx).toFixed(0)}%" title="${fmt(k*B)}"></i>`).join("")}</div>
@@ -416,19 +485,21 @@ function renderStats(){
 
 /* ===================== 每帧：推进时间 ===================== */
 function step(dt,now){
-  if(!S.playing) return;
+  if(!S.playing) return; if(S.hold){ if(AC.currentTime<S.hold) return; S.hold=0; }
   const ns=S.song.notes; let nt=S.t+dt*S.rate;
   if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&nt>=g.t){ nt=g.t; if(!S.waiting){S.waiting=true;g.from=now;} } } // 只有听到你弹对，时间才继续走
   // 提前 0.12 秒把音排进声卡的时间表，不靠画面刷新来触发，节奏才稳（等我弹时不能越过要等的那一拍）
   const g=S.mode==="wait"?S.groups[S.gi]:null, ahead=g?Math.min(nt+.12*S.rate,g.t):nt+.12*S.rate;
-  while(S.next<ns.length&&ns[S.next].t<=ahead){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,Math.max(n.d/S.rate,S.pedal?1.2:0),S.vol[n.h],Math.max(0,(n.t-nt)/S.rate)); }
+  const bg=S.song.beat; if(S.metro&&bg){ let k=S.nextBeat??Math.ceil((S.t-bg.t0)/bg.p-1e-6); for(;bg.t0+k*bg.p<=ahead;k++) click(Math.max(0,(bg.t0+k*bg.p-nt)/S.rate),((k%4)+4)%4===0); S.nextBeat=k; }
+  while(S.next<ns.length&&ns[S.next].t<=ahead){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,n.d/S.rate+(S.pedal?n.s??Math.max(0,1.2-n.d/S.rate):0),S.vol[n.h]*Math.min(1.3,(n.v??.75)/.75),Math.max(0,(n.t-nt)/S.rate)); }
   if(S.mode==="follow"){ const win=WIN*S.rate; while(S.fi<ns.length&&ns[S.fi].t+win<nt){ const n=ns[S.fi++]; if(isUser(n)&&!n.hit){ n.miss=true; if(S.rec){S.rec.miss++;S.rec.missAt.push(+n.t.toFixed(2));} } } }
   S.t=nt;
   if(MIC.on){ // 麦克风：只确认"该弹的音有没有响"，不判错音（麦克风判错音不可靠）
     if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&S.t>=g.t-.3*S.rate) for(const m of g.need) if(!g.got.has(m)&&micHas(m,now)) noteOn(m,"mic"); }
     if(S.mode==="follow") for(let i=S.fi;i<ns.length&&ns[i].t<=S.t+WIN*S.rate;i++){ const n=ns[i]; if(isUser(n)&&!n.hit&&micHas(n.m,now)) noteOn(n.m,"mic"); }
   }
-  if(S.loop&&S.t>=S.loop.b){ finishRec(); resetFrom(S.loop.a); }
+  if(S.loop&&S.t>=S.loop.b){ const r=S.rec; finishRec(); resetFrom(S.loop.a);
+    if(S.autoUp&&r?.acc>=90&&S.rate<1){ setRate(Math.min(1,S.rate+.05)); toast(`这遍 ${r.acc}%，速度提高到 ${Math.round(S.rate*100)}%`); } }
   else if(S.t>S.song.dur+1){ S.playing=false; finishRec(); uiSync(); }
 }
 
@@ -493,7 +564,11 @@ function draw(now){
     if(k.black){ cx.fillStyle="#00000024"; cx.fillRect(x,0,Math.round(k.w),top); }
     else{ cx.fillStyle=k.m%12===0?"#ffffff26":k.m%12===5?"#ffffff14":"#ffffff08"; cx.fillRect(x,0,dpr,top); } });
   cx.fillStyle="#ffffff14";
-  for(let s=Math.ceil(t);s<t+LA;s++){ const y=top-(s-t)*pps; cx.fillRect(0,y,W,dpr*(s%5?1:1.5)); }
+  const bt=S.song.beat;
+  if(bt){ cx.font=`${Math.round(10*dpr)}px sans-serif`; cx.textAlign="left"; cx.textBaseline="bottom";
+    for(let k=Math.ceil((t-bt.t0)/bt.p);bt.t0+k*bt.p<t+LA;k++){ const y=top-(bt.t0+k*bt.p-t)*pps, bar=((k%4)+4)%4===0; cx.fillStyle=bar?"#ffffff30":"#ffffff0d"; cx.fillRect(0,y,W,dpr*(bar?1.5:1));
+      if(bar){ cx.fillStyle="#ffffff70"; cx.fillText(String(k/4+1),4*dpr,y-2*dpr); } } }
+  else for(let s=Math.ceil(t);s<t+LA;s++){ const y=top-(s-t)*pps; cx.fillRect(0,y,W,dpr*(s%5?1:1.5)); }
   // 下落的音符
   const rects=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.min(ww*.7,15*dpr))}px sans-serif`;
   for(const n of S.song.notes){
@@ -547,7 +622,7 @@ function draw(now){
     if(want.size){ cx.strokeStyle=col(n.h,60,.6+.4*Math.sin(now/130)); cx.lineWidth=3*dpr; rr(k.x-k.w/2+dpr,top+dpr,k.w-2*dpr,(k.black?kbH*.63:kbH)-2*dpr,3*dpr); cx.stroke(); }
     if(S.fing&&n.f){ cx.fillStyle="#000a"; cx.beginPath(); cx.arc(k.x,y,Math.min(k.w*.42,10*dpr),0,7); cx.fill(); cx.fillStyle="#fff"; cx.fillText(n.f,k.x,y+dpr*.5); } }
   S.L={dpr,keys,top,kbH,rects};
-  const hud=`${fmt(t)} / ${fmt(S.song.dur)}`+(want.size&&S.waiting?`   等你弹：${[...want.values()].map(n=>PV.nameOf(n.m)+(n.f?"("+n.f+"指)":"")).join("  ")}`:"")+(S.rec?`   ✓${S.rec.hits}  ✗${S.rec.wrong}${S.mode==="follow"?"  漏"+S.rec.miss:""}`:"");
+  const hud=`${fmt(t)} / ${fmt(S.song.dur)}`+(bt?`  · 第 ${Math.max(1,PV.barOf(bt,t+.1))} 小节 · ${bt.bpm} BPM`:"")+(want.size&&S.waiting?`   等你弹：${[...want.values()].map(n=>PV.nameOf(n.m)+(n.f?"("+n.f+"指)":"")).join("  ")}`:"")+(S.rec?`   ✓${S.rec.hits}  ✗${S.rec.wrong}${S.mode==="follow"?"  漏"+S.rec.miss:""}`:"");
   if($("hud").textContent!==hud) $("hud").textContent=hud;
   if(!$("seek").matches(":active")) $("seek").value=t; const tm=fmt(t); if($("tm").textContent!==tm) $("tm").textContent=tm;
 }
