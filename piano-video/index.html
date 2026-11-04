@@ -247,7 +247,7 @@ function autoDetect(){
   [CAL.lo,CAL.hi]=r;
 }
 function calKeys(){ CAL.blackXs=PV.detectBlacks(rowLuma(blackRowY()),Math.round(CAL.x0),Math.round(CAL.x1)); return PV.layout(CAL.lo,CAL.hi,CAL.x0,CAL.x1,CAL.blackXs); }
-function sampleRow(d,keys){ return Int16Array.from(keys,k=>PV.probeHue(PV.probesOf(k).map(px=>{const i=Math.max(0,Math.min(CAL.w-1,Math.round(px)))*4;return [d[i],d[i+1],d[i+2]];}),CAL.vMin)); }
+const sampleRow=(d,keys)=>PV.sampleKeys(d,CAL.w,keys,CAL.vMin);
 function drawCal(){
   if(!CAL.w) return;
   cctx.drawImage(V,0,0,CAL.w,CAL.h); frameData=cctx.getImageData(0,0,CAL.w,CAL.h).data;

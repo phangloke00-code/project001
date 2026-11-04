@@ -16,9 +16,20 @@ const row = new Array(1040).fill(230); keys.filter(k => k.black).forEach(k => { 
 assert.strictEqual(PV.detectBlacks(row, 0, 1040).length, 36);
 
 // probes: dark background inactive, green/red bars active
-assert.strictEqual(PV.probeHue([[60, 45, 50]]), -1);
-assert.ok(Math.abs(PV.probeHue([[160, 215, 100]]) - 88) < 5);
-assert.ok(PV.hueDist(PV.probeHue([[235, 110, 120]]), 355) < 5);
+const rowOf = (paint) => { const d = new Uint8ClampedArray(1040 * 4); for (let x = 0; x < 1040; x++) d.set([60, 45, 50, 255], x * 4); paint((x0, x1, rgb) => { for (let x = Math.round(x0); x < x1; x++) d.set([...rgb, 255], x * 4); }); return d; };
+const K = m => keys.find(k => k.m === m), lit = (d, m) => PV.sampleKeys(d, 1040, keys)[keys.indexOf(K(m))];
+const LIGHT = [235, 110, 120], DARK = [190, 40, 55];
+// dark background -> nothing; full-width white bar on B4 lights B4 but not A#4 next to it
+let px = rowOf(f => f(K(71).x - 10, K(71).x + 10, LIGHT));
+assert.strictEqual(lit(px, 70), -1); assert.ok(PV.hueDist(lit(px, 71), 355) < 5); assert.strictEqual(lit(px, 72), -1);
+// A4 + B4 together, full width: still no A#4
+px = rowOf(f => { f(K(69).x - 10, K(69).x + 10, LIGHT); f(K(71).x - 10, K(71).x + 10, LIGHT); });
+assert.strictEqual(lit(px, 70), -1);
+// a narrow darker bar on A#4 drawn over a lighter B4 bar: both lit
+px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 6, K(70).x + 6, DARK); });
+assert.ok(lit(px, 70) >= 0 && lit(px, 71) >= 0);
+// green bar reads as green
+px = rowOf(f => f(K(60).x - 9, K(60).x + 9, [160, 215, 100])); assert.ok(Math.abs(lit(px, 60) - 88) < 5);
 
 // frames -> notes: key0 green 0..0.3 then gap then green again; key1 red 0.1..0.2
 const times = [0, .1, .2, .3, .4, .5], G = 90, R = 355;

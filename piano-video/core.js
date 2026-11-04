@@ -19,8 +19,6 @@ function layout(lo, hi, x0, x1, blackXs) {
   }
   return keys;
 }
-// Where to read pixels for each key. A black key needs its center AND both sides lit, so a wide white-key bar next to it doesn't count.
-const probesOf = k => k.black ? [k.x - .2 * k.w / .6, k.x, k.x + .2 * k.w / .6] : [k.x];
 
 // Dark runs in a row of luma across the keyboard = black keys.
 function detectBlacks(luma, x0, x1) {
@@ -45,11 +43,21 @@ function circMean(hs) {
   let x = 0, y = 0; for (const h of hs) { x += Math.cos(h * Math.PI / 180); y += Math.sin(h * Math.PI / 180); }
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-// pixels [[r,g,b],...] -> hue if every probe is a bright colored bar, else -1. The falling-area background is dark/grey.
-function probeHue(px, vMin = .4, sMin = .25) {
-  const hs = [];
-  for (const [r, g, b] of px) { const [h, s, v] = hsv(r, g, b); if (s < sMin || v < vMin) return -1; hs.push(h); }
-  return Math.round(circMean(hs));
+// One row of RGBA pixels -> hue per key (-1 = nothing). A key is lit when the pixel at its center is a bright colored bar
+// (the falling-area background is dark/grey). For a black key the lit stretch around it must also be narrow:
+// white-key bars are often as wide as the key and reach right up to the black key's center.
+function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
+  const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4; return hsv(d[i], d[i + 1], d[i + 2]); };
+  const lit = p => p[1] >= sMin && p[2] >= vMin, ww = keys.find(k => !k.black).w;
+  return Int16Array.from(keys, k => {
+    const c = px(k.x); if (!lit(c)) return -1;
+    if (k.black) { // same color AND shade, so a darker black-key bar right next to a lighter white-key bar stays separate
+      const same = p => lit(p) && hueDist(p[0], c[0]) < 30 && Math.abs(p[2] - c[2]) < .12;
+      let l = 0, r = 0; while (r < ww && same(px(k.x + r + 1))) r++; while (l < ww && same(px(k.x - l - 1))) l++;
+      if (l + r + 1 >= .8 * ww) return -1;
+    }
+    return Math.round(c[0]);
+  });
 }
 
 // times[i] = video time of frame i; frames[i][k] = hue at key k or -1. A run of lit frames on one key = one note.
@@ -193,6 +201,6 @@ function fromMidi(buf) {
   return notes.sort((x, y) => x.t - y.t || x.m - y.m);
 }
 
-const PV = {isBlack, nameOf, NAMES, layout, probesOf, detectBlacks, hsv, hueDist, probeHue, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);
