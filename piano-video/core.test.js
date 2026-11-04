@@ -31,6 +31,11 @@ assert.strictEqual(lit(px, 70), -1);
 // a narrow A#4 bar in the other hand's color next to a B4 bar: both lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 6, K(70).x + 6, [100, 140, 30]); });
 assert.ok(lit(px, 70) >= 0 && lit(px, 71) >= 0);
+// a narrow F#4 bar alone: F#4 lit, F4 and G4 next to it are not, even where the bar's edge reaches F4's center
+px = rowOf(f => f(K(66).x - 6, K(66).x + 7, LIGHT)); assert.ok(lit(px, 66) >= 0); assert.strictEqual(lit(px, 65), -1); assert.strictEqual(lit(px, 67), -1);
+px = rowOf(f => f(K(65).x - 1, K(66).x + 6, LIGHT)); assert.strictEqual(lit(px, 65), -1);
+// F4 + F#4 by different hands: both lit
+px = rowOf(f => { f(K(65).x - 10, K(65).x + 10, LIGHT); f(K(66).x - 6, K(66).x + 6, [100, 140, 30]); }); assert.ok(lit(px, 65) >= 0 && lit(px, 66) >= 0);
 // green bar reads as green
 px = rowOf(f => f(K(60).x - 9, K(60).x + 9, [160, 215, 100])); assert.ok(Math.abs(lit(px, 60) - 88) < 5);
 

@@ -49,15 +49,17 @@ function circMean(hs) {
 function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
   const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4; return hsv(d[i], d[i + 1], d[i + 2]); };
   const lit = p => p[1] >= sMin && p[2] >= vMin, ww = keys.find(k => !k.black).w;
-  return Int16Array.from(keys, k => {
+  return Int16Array.from(keys, (k, i) => {
     const c = px(k.x); if (!lit(c)) return -1;
-    if (k.black) { // measure by color only: the black key's center often sits on the soft edge of a white-key bar
-      // shortcut: a black and the next white key played by the SAME hand at once read as one wide bar, so the black one is missed
-      const same = p => lit(p) && hueDist(p[0], c[0]) < 30;
-      let l = 0, r = 0; while (r < ww && same(px(k.x + r + 1))) r++; while (l < ww && same(px(k.x - l - 1))) l++;
-      if (l + r + 1 >= .8 * ww) return -1;
-    }
-    return Math.round(c[0]);
+    // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
+    const same = p => lit(p) && hueDist(p[0], c[0]) < 30;
+    let l = 0, r = 0; while (r < ww && same(px(k.x + r + 1))) r++; while (l < ww && same(px(k.x - l - 1))) l++;
+    const wide = l + r + 1 >= .8 * ww, mid = k.x + (r - l) / 2;
+    // shortcut: a black and the next white key played by the SAME hand at once read as one wide bar, so the black one is missed
+    if (k.black) return wide ? -1 : Math.round(c[0]);
+    // a narrow bar centered on the black key next door is that black key's note, not this white key's
+    const nb = [keys[i - 1], keys[i + 1]].find(b => b?.black && Math.abs(mid - b.x) < Math.abs(mid - k.x));
+    return !wide && nb ? -1 : Math.round(c[0]);
   });
 }
 
