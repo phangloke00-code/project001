@@ -1,0 +1,46 @@
+// node piano-video/core.test.js
+const assert = require("assert");
+const PV = require("./core.js");
+
+// 88-key layout
+const keys = PV.layout(21, 108, 0, 1040);
+assert.strictEqual(keys.length, 88);
+assert.strictEqual(keys.filter(k => k.black).length, 36);
+assert.strictEqual(keys[0].x, 10); // 52 whites * 20px
+// detected black-key centers are used when the count matches
+const bx = keys.filter(k => k.black).map(k => Math.round(k.x) + 1);
+assert.deepStrictEqual(PV.layout(21, 108, 0, 1040, bx).filter(k => k.black).map(k => k.x), bx);
+
+// black-key detection on a synthetic keyboard row
+const row = new Array(1040).fill(230); keys.filter(k => k.black).forEach(k => { for (let x = Math.round(k.x - 5); x <= Math.round(k.x + 5); x++) row[x] = 20; });
+assert.strictEqual(PV.detectBlacks(row, 0, 1040).length, 36);
+
+// probes: dark background inactive, green/red bars active
+assert.strictEqual(PV.probeHue([[60, 45, 50]]), -1);
+assert.ok(Math.abs(PV.probeHue([[160, 215, 100]]) - 88) < 5);
+assert.ok(PV.hueDist(PV.probeHue([[235, 110, 120]]), 355) < 5);
+
+// frames -> notes: key0 green 0..0.3 then gap then green again; key1 red 0.1..0.2
+const times = [0, .1, .2, .3, .4, .5], G = 90, R = 355;
+const frames = [[G, -1], [G, R], [G, -1], [-1, -1], [G, -1], [-1, -1]];
+const notes = PV.extractNotes(times, frames, [48, 72]);
+assert.deepStrictEqual(notes.map(n => [n.m, n.t, n.d]), [[48, 0, .3], [72, .1, .1], [48, .4, .1]]);
+const cols = PV.assignHands(notes);
+assert.deepStrictEqual(notes.map(n => n.h), ["L", "R", "L"]);
+assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
+
+// fingering: C major triad RH 1-3-5, LH 5-3-1; scale RH has no illegal crossings
+const chord = h => [60, 64, 67].map(m => ({m, t: 0, d: 1, h}));
+assert.deepStrictEqual(PV.fingering(chord("R")).map(n => n.f), [1, 3, 5]);
+assert.deepStrictEqual(PV.fingering(chord("L")).map(n => n.f), [5, 3, 1]);
+const scale = [60, 62, 64, 65, 67, 69, 71, 72].map((m, i) => ({m, t: i * .4, d: .35, h: "R"}));
+PV.fingering(scale);
+assert.strictEqual(scale.map(n => n.f).join(""), "12312345");
+for (let i = 1; i < scale.length; i++) assert.ok(scale[i].f > scale[i - 1].f || scale[i].f === 1, "only the thumb may pass under going up");
+
+// MIDI round trip keeps pitch, time, length and hand
+const song = [{m: 60, t: 0, d: .5, h: "R"}, {m: 48, t: 0, d: 1, h: "L"}, {m: 64, t: .5, d: .5, h: "R"}];
+const back = PV.fromMidi(PV.toMidi(song).buffer);
+assert.deepStrictEqual(back.map(n => [n.m, n.t, n.d, n.h]), [[48, 0, 1, "L"], [60, 0, .5, "R"], [64, .5, .5, "R"]]);
+
+console.log("core ok");
