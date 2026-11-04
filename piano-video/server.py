@@ -9,8 +9,10 @@ Serves this folder and adds GET /api/yt?url=<YouTube link>, which downloads the 
 import glob, http.server, os, shutil, subprocess, sys, tempfile, urllib.parse
 
 HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
-# Video only is enough (we read the picture, not the sound); prefer H.264 mp4 so every browser can decode it.
-FORMAT = "bv*[ext=mp4][vcodec^=avc1][height<=720]/bv*[ext=mp4][height<=720]/b[ext=mp4]/b"
+# Picture AND sound (the sound gives each note's loudness and pedal); prefer H.264 mp4 so every browser can decode it.
+# Joining separate video+audio streams needs ffmpeg; without it take a single file that already has both.
+FORMAT = ("bv*[ext=mp4][vcodec^=avc1][height<=720]+ba[ext=m4a]/b[ext=mp4]/b" if shutil.which("ffmpeg")
+          else "b[ext=mp4][height<=720]/b[ext=mp4]/b")
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -26,7 +28,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send_error(500, "yt-dlp is not installed: pip install yt-dlp")
         with tempfile.TemporaryDirectory() as d:
             try:
-                r = subprocess.run(["yt-dlp", "--no-playlist", "-f", FORMAT, "-o", os.path.join(d, "v.%(ext)s"), "--", link],
+                r = subprocess.run(["yt-dlp", "--no-playlist", "-f", FORMAT, "--merge-output-format", "mp4", "-o", os.path.join(d, "v.%(ext)s"), "--", link],
                                    capture_output=True, text=True, timeout=900)
             except subprocess.TimeoutExpired:
                 return self.send_error(504, "Download timed out")

@@ -71,7 +71,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     </div>
     <div id="calInfo" class="muted"></div>
     <div class="row">
-      <span class="muted">识别速度</span><select id="scanRate"><option value="1">1×（最准）</option><option value="2" selected>2×</option><option value="4">4×（快，可能漏音）</option><option value="bg">后台模式（慢，切走也继续）</option></select>
+      <span class="muted">识别速度</span><select id="scanRate"><option value="fast" selected>极速（推荐，切走也继续）</option><option value="1">1×（最准）</option><option value="2">2×</option><option value="4">4×（快，可能漏音）</option><option value="bg">后台模式（慢，切走也继续）</option></select>
       <span class="muted" id="scanMsg">从头识别到结尾。识别时请停在这个页面，切到别的分页会暂停，回来自动继续。</span>
       <button class="pri" data-act="scan" id="scanBtn">开始识别</button><button data-act="scanStop" id="scanStop" hidden>停止并使用已识别部分</button>
     </div>
@@ -125,6 +125,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <div id="toast" hidden></div>
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
+<script src="lib/mp4box.all.min.js"></script>
 <script src="core.js?v=1.9"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -293,16 +294,39 @@ for(const [id,k] of [["cTop","top"],["cLine","lineY"],["cX0","x0"],["cX1","x1"],
   $(id).oninput=e=>{ CAL[k]=+e.target.value; if(CAL.hi<=CAL.lo) CAL.hi=Math.min(108,CAL.lo+12); drawCal(); };
 
 const BG_STEP=1/30; // 后台模式每秒读 30 帧
+// 极速模式：用 mp4box 拆出视频的每一帧，交给浏览器的硬件解码器（WebCodecs）直接解码，不用播放也不用一帧帧跳转。
+// 切到别的分页也照样跑。浏览器或视频格式不支持时返回 false，改用后台模式。
+async function fastScan(grab){
+  if(!window.VideoDecoder||!window.MP4Box) return false;
+  const buf=await (await fetch(V.src)).arrayBuffer(); buf.fileStart=0;
+  const mp4=MP4Box.createFile(), info=await new Promise((res,rej)=>{ mp4.onReady=res; mp4.onError=rej; mp4.appendBuffer(buf); mp4.flush(); });
+  const tr=info.videoTracks[0]; if(!tr) return false;
+  let description; for(const e of mp4.getTrackById(tr.id).mdia.minf.stbl.stsd.entries){ const b=e.avcC||e.hvcC||e.vpcC||e.av1C; if(b){ const ds=new DataStream(undefined,0,DataStream.BIG_ENDIAN); b.write(ds); description=new Uint8Array(ds.buffer,8); } }
+  const config={codec:tr.codec,codedWidth:tr.video.width,codedHeight:tr.video.height,description};
+  if(!(await VideoDecoder.isConfigSupported(config)).supported) return false;
+  const samples=[]; mp4.onSamples=(id,u,list)=>samples.push(...list); mp4.setExtractionOptions(tr.id,null,{nbSamples:1e9}); mp4.start(); mp4.flush();
+  if(!samples.length) return false;
+  let err=null; const dec=new VideoDecoder({output:f=>{ try{ grab(f.timestamp/1e6,f); } finally{ f.close(); } }, error:e=>err=e});
+  dec.configure(config);
+  for(const sm of samples){
+    if(SCAN.stop||err) break;
+    dec.decode(new EncodedVideoChunk({type:sm.is_sync?"key":"delta",timestamp:1e6*sm.cts/sm.timescale,duration:1e6*sm.duration/sm.timescale,data:sm.data}));
+    if(dec.decodeQueueSize>24) await new Promise(r=>dec.addEventListener("dequeue",r,{once:true}));
+  }
+  if(!err) await dec.flush().catch(e=>err=e); dec.close();
+  if(err) throw err; return true;
+}
 async function scan(){
   if(!CAL.w) return;
   const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=2;
   const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, upY=upperY()/CAL.scale, sh=Math.max(1,1/CAL.scale), up=[];
   const times=[], frames=[], start=0; let last=-1;
-  SCAN={running:true,stop:false};
+  SCAN={running:true,stop:false}; SCAN.done=()=>{ SCAN.stop=true; };
   if(V.currentTime>0){ V.currentTime=0; await new Promise(r=>V.addEventListener("seeked",r,{once:true})); } $("scanBtn").hidden=true; $("scanStop").hidden=false;
-  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(V,0,upY,V.videoWidth,sh,0,1,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,2).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
+  const grab=(t,src=V)=>{ if(t<=last) return; last=t; sx.drawImage(src,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(src,0,upY,V.videoWidth,sh,0,1,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,2).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
   V.muted=true;
-  if($("scanRate").value==="bg"){
+  if($("scanRate").value==="fast"&&await fastScan(grab).catch(e=>{ console.warn("fast scan",e); return false; })){ /* 极速模式已读完 */ }
+  else if($("scanRate").value==="bg"||$("scanRate").value==="fast"){
     // 后台模式：一帧一帧跳着读。靠 seeked 事件推进，不靠播放，切到别的分页或被全屏游戏挡住也会继续
     SCAN.done=()=>{ SCAN.stop=true; };
     for(let i=0;i*BG_STEP<V.duration&&!SCAN.stop;i++){
@@ -327,6 +351,11 @@ async function scan(){
   const fps=times.length/Math.max(.1,last-start);
   if(fps<18) toast(`识别时每秒只读到 ${fps.toFixed(0)} 帧，快速音符可能漏掉，建议用 1× 重新识别。`);
   const colors=PV.assignHands(notes); notes.forEach(n=>delete n.hue);
+  // 原视频有钢琴声：先把音符对齐到声音，再读出每个音弹得多重、松开后还响多久（踏板）
+  try{ toast("正在分析原视频的声音（力度、踏板）…"); $("scanBar").style.width="100%";
+    const au=await new OfflineAudioContext(1,1,22050).decodeAudioData(await (await fetch(V.src)).arrayBuffer()), x=au.getChannelData(0);
+    const off=PV.alignAudio(x,22050,notes); notes.forEach(n=>n.t+=off); PV.audioDynamics(x,22050,notes);
+  }catch(e){ console.warn("no audio",e); toast("这个视频没有声音（或读不出来），力度和踏板用默认值。"); }
   const t0=notes[0].t-2; if(t0>0) notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // start 2 s before the first note
   newSong(CAL.title,notes,colors);
 }
@@ -421,7 +450,7 @@ function step(dt,now){
   if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&nt>=g.t){ nt=g.t; if(!S.waiting){S.waiting=true;g.from=now;} } } // 只有听到你弹对，时间才继续走
   // 提前 0.12 秒把音排进声卡的时间表，不靠画面刷新来触发，节奏才稳（等我弹时不能越过要等的那一拍）
   const g=S.mode==="wait"?S.groups[S.gi]:null, ahead=g?Math.min(nt+.12*S.rate,g.t):nt+.12*S.rate;
-  while(S.next<ns.length&&ns[S.next].t<=ahead){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,Math.max(n.d/S.rate,S.pedal?1.2:0),S.vol[n.h],Math.max(0,(n.t-nt)/S.rate)); }
+  while(S.next<ns.length&&ns[S.next].t<=ahead){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,n.d/S.rate+(S.pedal?n.s??Math.max(0,1.2-n.d/S.rate):0),S.vol[n.h]*Math.min(1.3,(n.v??.75)/.75),Math.max(0,(n.t-nt)/S.rate)); }
   if(S.mode==="follow"){ const win=WIN*S.rate; while(S.fi<ns.length&&ns[S.fi].t+win<nt){ const n=ns[S.fi++]; if(isUser(n)&&!n.hit){ n.miss=true; if(S.rec){S.rec.miss++;S.rec.missAt.push(+n.t.toFixed(2));} } } }
   S.t=nt;
   if(MIC.on){ // 麦克风：只确认"该弹的音有没有响"，不判错音（麦克风判错音不可靠）
