@@ -26,7 +26,7 @@ canvas{display:block;max-width:100%}
 #calCv{width:100%;border-radius:8px;background:#000}
 #stage{width:100%;height:min(64vh,680px);border-radius:10px;touch-action:none;background:#2c2e33}
 /* 手机横屏 / 全屏：画面尽量大，标题栏收起 */
-@media (orientation:landscape) and (max-height:520px){ header{display:none} #stage{height:82vh} }
+@media (orientation:landscape) and (max-height:520px){ header,#play>.row:first-child{display:none} #stage{height:88vh} }
 :fullscreen #stage{height:84vh} :fullscreen header{display:none}
 #hud{min-height:22px} #sum{margin-top:8px}
 .bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--acc);width:0}
