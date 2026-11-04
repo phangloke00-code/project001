@@ -38,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.4 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.5 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -89,6 +89,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
   <div class="row"><h2 id="pTitle" style="margin:0;flex:1"></h2><button data-act="stats">📊 分析</button></div>
   <canvas id="stage"></canvas>
   <div id="hud" class="mono muted"></div>
+  <div class="muted" style="font-size:12px">画面上：上下拖 = 拖进度 · 点一下 = 播放/暂停 · 双击左边/右边 = 后退/快进 5 秒</div>
   <div class="row">
     <button class="pri" data-act="toggle" id="playBtn" style="min-width:76px">▶ 播放</button><button data-act="restart" title="回到开头">⏮</button>
     <input id="seek" type="range" min="0" step="0.05"><span id="tm" class="mono muted"></span>
@@ -133,7 +134,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=2.4"></script>
+<script src="core.js?v=2.5"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -151,10 +152,10 @@ function show(id){ if(id!=="play"&&id!=="stats") pause(); for(const s of documen
 
 /* ===================== 声音 ===================== */
 let AC,master;
-function ac(){ if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();newMaster();loadPiano();} if(AC.state==="suspended") AC.resume(); return AC; }
+function ac(){ if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)({latencyHint:"balanced"});newMaster();loadPiano();} if(AC.state==="suspended") AC.resume(); return AC; }
 function newMaster(){ try{master?.disconnect();}catch(e){} master=AC.createGain(); master.gain.value=.5; const c=AC.createDynamicsCompressor(); c.threshold.value=-6; c.knee.value=6; c.ratio.value=4; c.attack.value=.005; c.release.value=.2; master.connect(c); c.connect(AC.destination); } // gentle limiter only: the default compressor pumped on every attack
 // Real piano: Salamander Grand Piano samples (CC-BY 3.0, Alexander Holm), one every 3 keys, pitched to the rest.
-const PIANO={}, VOICE={};
+const PIANO={}, VOICE={}, LIVE=[]; const MAXV=32; // 手机同时发声太多会卡顿爆音：超过就让最老的音淡出
 function loadPiano(){
   const N={C:0,Ds:3,Fs:6,A:9};
   for(let o=0;o<=8;o++) for(const n in N){ const m=12*(o+1)+N[n]; if(m<21||m>108) continue;
@@ -171,6 +172,9 @@ function tone(m,dur=.5,vel=.8,when=0){
     const src=a.createBufferSource(), g=a.createGain(); src.buffer=PIANO[s]; src.playbackRate.value=2**((m-s)/12);
     const tc=S.pedal?.35:.12; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vel,t0+.004); g.gain.setTargetAtTime(0,end,tc); // 4ms fade-in; damper falls on release
     VOICE[m]={g,end:end+tc*8};
+    for(let i=LIVE.length-1;i>=0;i--) if(LIVE[i].end<a.currentTime) LIVE.splice(i,1);
+    while(LIVE.length>=MAXV){ const o=LIVE.shift(); o.g.gain.setTargetAtTime(0,Math.max(t0-.05,a.currentTime),.02); try{o.src.stop(Math.max(t0,a.currentTime)+.1);}catch(e){} }
+    LIVE.push({g,src,end:end+tc*8});
     src.connect(g); g.connect(master); src.start(t0,.025); src.stop(end+tc*8); return; // .025: skip the mp3 encoder's silent start
   }
   const f=440*2**((m-69)/12); // samples still loading (or offline): fall back to the synth
@@ -538,14 +542,28 @@ addEventListener("keydown",e=>{
 });
 let midiN=0;
 try{ navigator.requestMIDIAccess?.().then(acc=>{ const bind=()=>{ midiN=0; acc.inputs.forEach(inp=>{ midiN++; inp.onmidimessage=ev=>{ const [st,m,v]=ev.data; if((st&0xf0)===0x90&&v>0) noteOn(m,"midi"); }; }); $("midiV").textContent=midiN?"🎹 已连接 MIDI 键盘":""; }; bind(); acc.onstatechange=bind; }).catch(()=>{}); }catch(e){}
+// 画面手势：上下拖 = 拖进度（往下拖 = 往后），点一下 = 播放/暂停，双击左/右三分之一 = 后退/快进 5 秒；暂停时点音符 = 改手/指法
+const G={};
 cv.addEventListener("pointerdown",e=>{
-  const L=S.L; if(!L) return; const r=cv.getBoundingClientRect(), x=(e.clientX-r.left)*L.dpr, y=(e.clientY-r.top)*L.dpr;
+  const L=S.L; if(!L||!S.song) return; const r=cv.getBoundingClientRect(), x=(e.clientX-r.left)*L.dpr, y=(e.clientY-r.top)*L.dpr;
   if(y>=L.top){ const blk=y<L.top+L.kbH*.63, k=L.keys.find(k=>k.black&&blk&&Math.abs(x-k.x)<k.w/2)||L.keys.find(k=>!k.black&&Math.abs(x-k.x)<k.w/2); if(k) noteOn(k.m,"tap"); return; }
-  if(S.playing) return;
-  const n=L.rects.find(([x0,y0,w,h])=>x>=x0&&x<=x0+w&&y>=y0&&y<=y0+h)?.[4]; if(!n) return;
-  if($("editSel").value==="f") n.f=(n.f||0)%5+1; else n.h=n.h==="L"?"R":"L";
-  saveSongs(); resetFrom(S.t);
+  Object.assign(G,{id:e.pointerId,y0:e.clientY,t0:S.t,drag:false,was:S.playing,x,y,side:(e.clientX-r.left)/r.width}); cv.setPointerCapture(e.pointerId);
 });
+cv.addEventListener("pointermove",e=>{
+  if(e.pointerId!==G.id) return; const dy=e.clientY-G.y0;
+  if(!G.drag&&Math.abs(dy)>8){ G.drag=true; pause(); finishRec(); }
+  if(G.drag){ const pps=S.L.top/S.L.dpr/3; resetFrom(Math.max(0,Math.min(S.song.dur,G.t0+dy/pps))); }
+});
+cv.addEventListener("pointerup",e=>{
+  if(e.pointerId!==G.id) return; G.id=null;
+  if(G.drag){ if(G.was) play(); return; }
+  const now=performance.now(), side=G.side<1/3?-1:G.side>2/3?1:0;
+  if(G.tapT&&now-G.tapT<300&&side){ clearTimeout(G.timer); G.tapT=now; finishRec(); resetFrom(Math.max(0,Math.min(S.song.dur,S.t+5*side))); toast(side<0?"⏪ 后退 5 秒":"⏩ 快进 5 秒"); return; } // 连续双击可以一直跳
+  if(!S.playing){ const n=S.L.rects.find(([x0,y0,w,h])=>G.x>=x0&&G.x<=x0+w&&G.y>=y0&&G.y<=y0+h)?.[4];
+    if(n){ if($("editSel").value==="f") n.f=(n.f||0)%5+1; else n.h=n.h==="L"?"R":"L"; saveSongs(); resetFrom(S.t); return; } }
+  G.tapT=now; clearTimeout(G.timer); G.timer=setTimeout(()=>{ G.tapT=0; S.playing?pause():play(); },side?300:0); // 两边要等一下，看是不是双击
+});
+cv.addEventListener("pointercancel",()=>{ G.id=null; });
 
 /* ===================== 画面 ===================== */
 function range(){ if(S.full) return [21,108]; let lo=108,hi=21; S.song.notes.forEach(n=>{lo=Math.min(lo,n.m);hi=Math.max(hi,n.m);});
