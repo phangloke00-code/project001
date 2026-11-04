@@ -51,8 +51,9 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
   const lit = p => p[1] >= sMin && p[2] >= vMin, ww = keys.find(k => !k.black).w;
   return Int16Array.from(keys, k => {
     const c = px(k.x); if (!lit(c)) return -1;
-    if (k.black) { // same color AND shade, so a darker black-key bar right next to a lighter white-key bar stays separate
-      const same = p => lit(p) && hueDist(p[0], c[0]) < 30 && Math.abs(p[2] - c[2]) < .12;
+    if (k.black) { // measure by color only: the black key's center often sits on the soft edge of a white-key bar
+      // shortcut: a black and the next white key played by the SAME hand at once read as one wide bar, so the black one is missed
+      const same = p => lit(p) && hueDist(p[0], c[0]) < 30;
       let l = 0, r = 0; while (r < ww && same(px(k.x + r + 1))) r++; while (l < ww && same(px(k.x - l - 1))) l++;
       if (l + r + 1 >= .8 * ww) return -1;
     }

@@ -25,8 +25,11 @@ assert.strictEqual(lit(px, 70), -1); assert.ok(PV.hueDist(lit(px, 71), 355) < 5)
 // A4 + B4 together, full width: still no A#4
 px = rowOf(f => { f(K(69).x - 10, K(69).x + 10, LIGHT); f(K(71).x - 10, K(71).x + 10, LIGHT); });
 assert.strictEqual(lit(px, 70), -1);
-// a narrow darker bar on A#4 drawn over a lighter B4 bar: both lit
-px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 6, K(70).x + 6, DARK); });
+// A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
+px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
+assert.strictEqual(lit(px, 70), -1);
+// a narrow A#4 bar in the other hand's color next to a B4 bar: both lit
+px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 6, K(70).x + 6, [100, 140, 30]); });
 assert.ok(lit(px, 70) >= 0 && lit(px, 71) >= 0);
 // green bar reads as green
 px = rowOf(f => f(K(60).x - 9, K(60).x + 9, [160, 215, 100])); assert.ok(Math.abs(lit(px, 60) - 88) < 5);
