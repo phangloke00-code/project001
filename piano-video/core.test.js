@@ -89,4 +89,13 @@ assert.deepStrictEqual(back.map(n => n.v), [1, .5, .8]); // velocity kept (to 1/
   assert.ok(Math.abs(((g.t0 - 1.3) % (4 * p) + 4 * p) % (4 * p)) < .03 || Math.abs(((g.t0 - 1.3) % (4 * p) + 4 * p) % (4 * p) - 4 * p) < .03, "downbeat " + g.t0);
   assert.strictEqual(PV.barOf(g, PV.barTime(g, 5) + .01), 5); }
 
+{ // a black key lit in the calibration frame (missed) plus a stray dark run must not shift the other black keys
+  const ref = PV.layout(21, 108, 0, 960, []).filter(k => k.black).map(k => k.x);
+  const C4 = PV.layout(21, 108, 0, 960, []).find(k => k.m === 60), det = ref.filter((_, i) => i !== 10).concat([C4.x - C4.w / 2]).sort((a, b) => a - b).map(x => x + 1);
+  const got = PV.layout(21, 108, 0, 960, det).filter(k => k.black).map(k => k.x);
+  got.forEach((x, i) => assert.ok(Math.abs(x - ref[i]) <= 1, "black " + i + " " + x + " vs " + ref[i]));
+  // useKeys: fragmented line result vs clean key-surface result
+  const fr = [...Array(100)].map((_, i) => ({d: i < 60 ? .05 : .5})), ok = [...Array(100)].map(() => ({d: .4}));
+  assert.ok(PV.useKeys(fr, ok) && !PV.useKeys(ok, ok) && !PV.useKeys(fr, [])); }
+
 console.log("core ok");
