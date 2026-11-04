@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>落键练琴</title><meta name="claude:viewport-fit-sides" content="cover">
+<title>落键练琴</title><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#1d1f24"><meta name="claude:viewport-fit-sides" content="cover">
 <style>
 :root{--bg:#1c1e23;--bg2:#262930;--bg3:#30343d;--line:#3a3f4a;--ink:#eceef3;--muted:#9aa0ad;--acc:#9bd35a;--acc-ink:#15220a;--bad:#ff7272;--good:#6be39a;color-scheme:dark}
 *{box-sizing:border-box}[hidden]{display:none!important}
@@ -25,6 +25,9 @@ main>section{padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-l
 canvas{display:block;max-width:100%}
 #calCv{width:100%;border-radius:8px;background:#000}
 #stage{width:100%;height:min(64vh,680px);border-radius:10px;touch-action:none;background:#2c2e33}
+/* 手机横屏 / 全屏：画面尽量大，标题栏收起 */
+@media (orientation:landscape) and (max-height:520px){ header{display:none} #stage{height:82vh} }
+:fullscreen #stage{height:84vh} :fullscreen header{display:none}
 #hud{min-height:22px} #sum{margin-top:8px}
 .bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--acc);width:0}
 table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:500}
@@ -35,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.9 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.0 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -46,7 +49,9 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <div class="row"><input id="yt" type="url" placeholder="或粘贴 YouTube 链接"><button data-act="yt">下载并识别</button></div>
     <div id="ytMsg" class="muted"></div>
   </div>
-  <div class="card"><h2>我的曲子</h2><div id="songList"></div></div>
+  <div class="card"><h2>我的曲子</h2><div id="songList"></div>
+    <div class="row" style="margin-top:8px"><button data-act="backup">💾 备份全部（曲子 + 练习记录）</button><input id="bak" type="file" accept=".json,application/json" hidden><button data-act="restore">📂 从备份恢复</button>
+    <span class="muted">曲子只存在这个浏览器里，清除浏览器数据就没了；换手机/电脑时也用备份文件搬过去。</span></div></div>
 </section>
 
 <!-- ================= 校准 + 识别 ================= -->
@@ -106,7 +111,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <span class="muted">小节</span><input id="barA" type="number" min="1" value="1" style="width:58px"><span class="muted">到</span><input id="barB" type="number" min="1" value="4" style="width:58px"><button data-act="barLoop">🔁 循环这几小节</button>
     <button data-act="autoUp" id="autoUpBtn" title="循环练习时，一遍准确率达到 90% 就自动加快 5%，直到原速">练熟自动加速</button>
     <button data-act="metro" id="metroBtn" title="按歌曲的拍子打拍">🥁 节拍器</button><button data-act="countIn" id="countInBtn" title="练习模式开始前先数 4 拍">预备拍</button><button data-act="pedal" id="pedalBtn" title="像原曲一样踩着延音踏板：短音也会自然地响一会儿">延音踏板</button><button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
-    <button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
+    <button data-act="fs" id="fsBtn" title="全屏，手机会转成横屏">⛶ 全屏</button><button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
   </div>
   <div class="row muted">
     暂停时点音符：<select id="editSel"><option value="f">改指法 1→5</option><option value="h">换左右手</option></select>
@@ -128,7 +133,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=1.9"></script>
+<script src="core.js?v=2.0"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -137,6 +142,7 @@ function toast(msg){const t=$("toast");t.textContent=msg;t.hidden=false;clearTim
 // 页面内确认框（嵌入的网页里浏览器的 confirm/prompt 不弹出）
 function ask(msg,def){ const d=$("dlg"),i=$("dlgIn"); $("dlgMsg").textContent=msg; i.hidden=def==null; i.value=def??""; d.returnValue=""; d.showModal(); return new Promise(r=>d.onclose=()=>r(d.returnValue!=="ok"?null:def==null?true:i.value.trim()||null)); }
 const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
+if(!inFrame&&"serviceWorker" in navigator&&location.protocol!=="file:") navigator.serviceWorker.register("sw.js").catch(()=>{}); // 装到主屏幕 + 离线可用
 const store={get(k,d){try{const v=localStorage.getItem("pv-"+k);return v?JSON.parse(v):d;}catch(e){return d;}},
   set(k,v){try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}}};
 let songs=store.get("songs",[]);
@@ -200,10 +206,19 @@ const ACT={
   setB:()=>{ if(!S.loop) S.loop={a:startT(),b:S.t}; else if(S.t>S.loop.a) S.loop.b=S.t; uiSync(); },
   clrLoop:()=>{S.loop=null;uiSync();},
   fing:()=>{S.fing=!S.fing;uiSync();}, pedal:()=>{S.pedal=!S.pedal;uiSync();}, metro:()=>{S.metro=!S.metro;S.nextBeat=null;uiSync();}, countIn:()=>{S.countIn=!S.countIn;uiSync();}, autoUp:()=>{S.autoUp=!S.autoUp;uiSync();},
+  fs:()=>{ const el=document.documentElement, req=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(document.fullscreenElement||document.webkitFullscreenElement) return (document.exitFullscreen||document.webkitExitFullscreen).call(document);
+    if(!req) return toast("这台设备不支持网页全屏（iPhone）：点分享 → 添加到主屏幕，从主屏幕打开就是全屏，再把手机横过来。");
+    Promise.resolve(req.call(el)).then(()=>screen.orientation?.lock?.("landscape")).catch(()=>{}); },
   barLoop:()=>{ const g=S.song.beat; if(!g) return toast("这首歌找不到拍子，请用 设 A / 设 B。"); const a=Math.max(1,+$("barA").value||1), b=Math.max(a,+$("barB").value||a);
     S.loop={a:Math.max(0,PV.barTime(g,a)-.05),b:PV.barTime(g,b+1)-.05}; finishRec(); resetFrom(S.loop.a); uiSync(); toast(`循环第 ${a}–${b} 小节`); }, full:()=>{S.full=!S.full;uiSync();},
   mic:micToggle, stats:()=>show("stats"),
   refing:async()=>{ if(await ask("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
+  backup:()=>{ if(inFrame) return toast("这里不能下载文件。备份请用 GitHub Pages 打开的版本。");
+    const data={app:"落键练琴",ver:1,date:Date.now(),set:store.get("set",{}),songs:JSON.parse(localStorage.getItem("pv-songs")||"[]"),att:Object.fromEntries(songs.map(s=>[s.id,store.get("att-"+s.id,[])]))};
+    const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));
+    a.download=`piano-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.append(a); a.click(); a.remove(); toast(`已备份 ${data.songs.length} 首曲子`); },
+  restore:()=>$("bak").click(),
   midi:()=>{ if(inFrame) return toast("这里不能下载文件。导出 MIDI 请用 GitHub Pages 或本地 server.py 打开的版本。"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([PV.toMidi(S.song.notes)],{type:"audio/midi"})); a.download=S.song.title+".mid"; a.click(); },
   stopReplay:()=>{ if(AC) newMaster(); },
 };
@@ -213,6 +228,13 @@ $("file").onchange=async e=>{
   if(/\.midi?$/i.test(f.name)){ try{ const notes=PV.fromMidi(await f.arrayBuffer()); if(!notes.length) throw new Error("文件里没有音符"); newSong(title,notes,{L:95,R:355}); }catch(err){ toast("MIDI 读取失败："+err.message); } return; }
   loadVideo(URL.createObjectURL(f),title);
 };
+// 从备份恢复：同一首（id 相同）用备份里的覆盖，其余的加进来；练习记录合并去重
+$("bak").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  try{ const d=JSON.parse(await f.text()); if(d.app!=="落键练琴"||!Array.isArray(d.songs)) throw new Error("不是落键练琴的备份文件");
+    let add=0; for(const s of d.songs){ if(!s?.id||!Array.isArray(s.notes)) continue; const i=songs.findIndex(x=>x.id===s.id); if(i<0){songs.push(s);add++;} else songs[i]=s;
+      const old=store.get("att-"+s.id,[]), seen=new Set(old.map(a=>a.date)); store.set("att-"+s.id,[...old,...(d.att?.[s.id]||[]).filter(a=>!seen.has(a.date))].sort((a,b)=>b.date-a.date).slice(0,60)); }
+    saveSongs(); renderLib(); toast(`已恢复 ${d.songs.length} 首（新增 ${add} 首）`);
+  }catch(err){ toast("恢复失败："+err.message); } };
 async function loadYT(){
   const url=$("yt").value.trim(); if(!url) return toast("先粘贴 YouTube 链接");
   const msg=$("ytMsg"); msg.textContent="下载中…（视频越长越久）";
