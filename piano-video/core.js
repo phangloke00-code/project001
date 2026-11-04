@@ -249,6 +249,26 @@ function audioDynamics(x, sr, notes) {
   return notes;
 }
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics};
+// Beat grid from note onsets: p = seconds per beat (60..160 BPM), t0 = time of a downbeat, 4 beats per bar.
+// The period whose phase the onsets agree on most wins; the downbeat is the beat slot with the most (and lowest, loudest) notes.
+function beatGrid(notes) {
+  const on = groupByOnset(notes).map(g => ({t: g.t, w: g.notes.length + g.notes.filter(n => n.m < 55).length}));
+  if (on.length < 8) return null;
+  let best = null;
+  const T = on[on.length - 1].t - on[0].t + 1;
+  // fine steps: over a whole song a tiny tempo error adds up, so the true peak is very narrow (step ~ 1/20 cycle drift)
+  for (let p = .375; p <= 1; p *= 1 + .05 * p / T) {
+    let x = 0, y = 0, W = 0; for (const o of on) { const a = 2 * Math.PI * o.t / p; x += o.w * Math.cos(a); y += o.w * Math.sin(a); W += o.w; }
+    const sc = Math.hypot(x, y) / W; if (!best || sc > best.sc + 1e-9) best = {sc, p, ph: Math.atan2(y, x)};
+  }
+  const {p} = best, t0 = ((best.ph / (2 * Math.PI)) * p + p) % p, slot = [0, 0, 0, 0];
+  for (const g of groupByOnset(notes)) { const k = Math.round((g.t - t0) / p); if (Math.abs(g.t - t0 - k * p) < .25 * p) slot[((k % 4) + 4) % 4] += g.notes.length + 3 * g.notes.filter(n => n.m < 45).length; }
+  const d = slot.indexOf(Math.max(...slot));
+  return {p: +p.toFixed(4), t0: +(t0 + d * p).toFixed(3), bpb: 4, bpm: Math.round(60 / p)};
+}
+const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
+const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
+
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);

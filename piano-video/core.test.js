@@ -83,4 +83,10 @@ assert.deepStrictEqual(back.map(n => n.v), [1, .5, .8]); // velocity kept (to 1/
   ns.forEach(n => n.t += off); PV.audioDynamics(x, sr, ns);
   assert.ok(ns[0].v > ns[1].v, "softer note gets lower velocity"); assert.ok(ns[0].s >= .8 && ns[1].s <= .2, "ring " + ns.map(n => n.s)); }
 
+// beat grid: 100 BPM, bass on each downbeat starting at 1.3 s, melody on every beat and some off-beats
+{ const p = .6, ns = []; for (let b = 0; b < 32; b++) { const t = 1.3 + b * p; ns.push({m: 72, t, d: .2}); if (b % 4 === 0) ns.push({m: 40, t, d: 1}); if (b % 2) ns.push({m: 76, t: t + p / 2, d: .1}); }
+  const g = PV.beatGrid(ns); assert.ok(Math.abs(g.p - p) < .01 && g.bpm === 100, "tempo " + JSON.stringify(g));
+  assert.ok(Math.abs(((g.t0 - 1.3) % (4 * p) + 4 * p) % (4 * p)) < .03 || Math.abs(((g.t0 - 1.3) % (4 * p) + 4 * p) % (4 * p) - 4 * p) < .03, "downbeat " + g.t0);
+  assert.strictEqual(PV.barOf(g, PV.barTime(g, 5) + .01), 5); }
+
 console.log("core ok");
