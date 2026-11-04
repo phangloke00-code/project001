@@ -53,17 +53,18 @@ function probeHue(px, vMin = .4, sMin = .25) {
 }
 
 // times[i] = video time of frame i; frames[i][k] = hue at key k or -1. A run of lit frames on one key = one note.
-function extractNotes(times, frames, keyMs) {
+// A jump of more than maxGap seconds between frames (browser skipped frames) ends every run, so no note is stretched across it.
+function extractNotes(times, frames, keyMs, maxGap = .25) {
   const notes = [], N = times.length;
   for (let k = 0; k < keyMs.length; k++) {
     let s = -1, hs = [];
-    const close = i => {
-      const end = i < N ? times[i] : times[N - 1] + .03;
+    const close = (i, end = i < N ? times[i] : times[N - 1] + .03) => {
       notes.push({m: keyMs[k], t: +times[s].toFixed(3), d: +Math.max(.05, end - times[s]).toFixed(3), hue: Math.round(circMean(hs))});
       s = -1; hs = [];
     };
     for (let i = 0; i < N; i++) {
       const h = frames[i][k];
+      if (s >= 0 && times[i] - times[i - 1] > maxGap) close(i, times[i - 1] + .03);
       if (h < 0) { if (s >= 0) close(i); continue; }
       if (s >= 0 && hueDist(h, hs[0]) > 40) close(i); // color change with no gap = other hand took over the key
       if (s < 0) s = i;
