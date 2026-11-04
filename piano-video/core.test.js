@@ -98,4 +98,12 @@ assert.deepStrictEqual(back.map(n => n.v), [1, .5, .8]); // velocity kept (to 1/
   const fr = [...Array(100)].map((_, i) => ({d: i < 60 ? .05 : .5})), ok = [...Array(100)].map(() => ({d: .4}));
   assert.ok(PV.useKeys(fr, ok) && !PV.useKeys(ok, ok) && !PV.useKeys(fr, [])); }
 
+{ // stripeShift: lit stripes drawn 4 px right of the white keys' centers -> white keys move +4, black keys stay
+  const keys = PV.layout(21, 108, 0, 960, []), W = 960, rows = [], times = [], notes = [];
+  for (let i = 0; i < 20; i++) { const r = new Uint8ClampedArray(W * 4).fill(200); for (let x = 0; x < W; x++) r[x * 4 + 3] = 255;
+    const k = keys.filter(q => !q.black)[i + 10]; for (let x = Math.round(k.x + 1); x <= k.x + 7; x++) { r[x * 4] = 255; r[x * 4 + 1] = 160; r[x * 4 + 2] = 0; }
+    rows.push(r); times.push(i); notes.push({m: k.m, t: i - .1, d: .2}); }
+  const k2 = PV.stripeShift(rows, times, W, keys, notes);
+  assert.ok(Math.abs(k2[0].x - keys[0].x - 4) < .6 && k2[1].x === keys[1].x, "shift " + (k2[0].x - keys[0].x)); }
+
 console.log("core ok");
