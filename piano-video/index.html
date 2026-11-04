@@ -35,7 +35,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.6 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.7 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -97,8 +97,9 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
   </div>
   <div class="row">
     <label class="lbl"><span>速度 <b id="rateV" class="mono">100%</b></span><input id="rate" type="range" min="0.25" max="1.5" step="0.05" value="1"></label>
-    <label class="lbl"><span>左手音量</span><input id="volL" type="range" min="0" max="1" step="0.05"></label>
-    <label class="lbl"><span>右手音量</span><input id="volR" type="range" min="0" max="1" step="0.05"></label>
+    <label class="lbl"><span>左手音量 <b id="volLV" class="mono">100%</b></span><input id="volL" type="range" min="0" max="1" step="0.05"></label>
+    <label class="lbl"><span>右手音量 <b id="volRV" class="mono">100%</b></span><input id="volR" type="range" min="0" max="1" step="0.05"></label>
+    <button id="volReset" title="左右手音量都恢复 100%">↺ 默认音量</button>
   </div>
   <div class="row">
     <button data-act="setA">设 A</button><button data-act="setB">设 B</button><button data-act="clrLoop">取消循环</button><span id="loopV" class="muted"></span>
@@ -124,7 +125,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <div id="toast" hidden></div>
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
-<script src="core.js?v=1.6"></script>
+<script src="core.js?v=1.7"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -331,7 +332,7 @@ async function scan(){
 /* ===================== 播放 / 练习状态 ===================== */
 const WIN=.2; // 跟节奏模式：早/晚 0.2 秒内算弹对
 const cv=$("stage"), cx=cv.getContext("2d");
-const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:.8,R:.8},fing:true,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
+const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
   store.get("set",{}));
 const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,full:S.full});
 const isUser=n=>S.mode!=="demo"&&(S.hand==="both"||S.hand===n.h);
@@ -353,7 +354,7 @@ function uiSync(){
   for(const b of document.querySelectorAll("[data-hand]")) b.classList.toggle("on",b.dataset.hand===S.hand);
   $("playBtn").textContent=S.playing?"⏸ 暂停":"▶ 播放";
   for(const b of document.querySelectorAll("[data-rate]")) b.classList.toggle("on",+b.dataset.rate===S.rate);
-  $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R;
+  $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R; $("volLV").textContent=Math.round(S.vol.L*100)+"%"; $("volRV").textContent=Math.round(S.vol.R*100)+"%";
   $("fingBtn").classList.toggle("on",S.fing); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
   $("loopV").textContent=S.loop?`循环 ${fmt(S.loop.a)}–${fmt(S.loop.b)}`:"";
   saveSet();
@@ -361,7 +362,8 @@ function uiSync(){
 $("rate").oninput=e=>{S.rate=+e.target.value;uiSync();};
 // "+"/"-" step 5 %, a number sets it; kept within the slider's 25–150 %
 function setRate(v){ S.rate=Math.min(1.5,Math.max(.25,+(v==="+"?S.rate+.05:v==="-"?S.rate-.05:+v).toFixed(2))); uiSync(); toast("速度 "+Math.round(S.rate*100)+"%"); }
-$("volL").oninput=e=>{S.vol.L=+e.target.value;saveSet();}; $("volR").oninput=e=>{S.vol.R=+e.target.value;saveSet();};
+$("volL").oninput=e=>{S.vol.L=+e.target.value;saveSet();uiSync();}; $("volR").oninput=e=>{S.vol.R=+e.target.value;saveSet();uiSync();};
+$("volReset").onclick=()=>{S.vol={L:1,R:1};saveSet();uiSync();};
 $("seek").oninput=e=>{ finishRec(); resetFrom(+e.target.value); };
 
 /* ===================== 记录 ===================== */
