@@ -56,9 +56,10 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
     let l = 0, r = 0; while (r < ww && same(px(k.x + r + 1))) r++; while (l < ww && same(px(k.x - l - 1))) l++;
     const wide = l + r + 1 >= .8 * ww, mid = k.x + (r - l) / 2;
     // shortcut: a black and the next white key played by the SAME hand at once read as one wide bar, so the black one is missed
-    if (k.black) return wide ? -1 : Math.round(c[0]);
-    // a narrow bar centered on the black key next door is that black key's note, not this white key's
-    const nb = [keys[i - 1], keys[i + 1]].find(b => b?.black && Math.abs(mid - b.x) < Math.abs(mid - k.x));
+    if (k.black && wide || l + r + 1 < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
+    // a narrow stretch belongs to whichever key its middle is nearest: a narrow bar centered on the black key next door is
+    // that black key's note, and the rounded (narrower) end of a white bar is not the black key next to it
+    const nb = [keys[i - 1], keys[i + 1]].find(b => b && b.black !== k.black && Math.abs(mid - b.x) < Math.abs(mid - k.x));
     return !wide && nb ? -1 : Math.round(c[0]);
   });
 }

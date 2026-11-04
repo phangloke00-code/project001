@@ -34,6 +34,10 @@ assert.ok(lit(px, 70) >= 0 && lit(px, 71) >= 0);
 // a narrow F#4 bar alone: F#4 lit, F4 and G4 next to it are not, even where the bar's edge reaches F4's center
 px = rowOf(f => f(K(66).x - 6, K(66).x + 7, LIGHT)); assert.ok(lit(px, 66) >= 0); assert.strictEqual(lit(px, 65), -1); assert.strictEqual(lit(px, 67), -1);
 px = rowOf(f => f(K(65).x - 1, K(66).x + 6, LIGHT)); assert.strictEqual(lit(px, 65), -1);
+// the rounded end of an F4 bar (narrower, off-center toward F#4's side reaches F#4's center): F#4 not lit
+px = rowOf(f => f(K(65).x - 6, K(66).x + 1, LIGHT)); assert.strictEqual(lit(px, 66), -1); assert.ok(lit(px, 65) >= 0);
+// a single stray lit pixel at G#2's center next to an A2 bar: G#2 not lit
+px = rowOf(f => { f(K(45).x - 8, K(45).x + 8, LIGHT); f(K(44).x, K(44).x + 1, LIGHT); }); assert.strictEqual(lit(px, 44), -1);
 // F4 + F#4 by different hands: both lit
 px = rowOf(f => { f(K(65).x - 10, K(65).x + 10, LIGHT); f(K(66).x - 6, K(66).x + 6, [100, 140, 30]); }); assert.ok(lit(px, 65) >= 0 && lit(px, 66) >= 0);
 // green bar reads as green
