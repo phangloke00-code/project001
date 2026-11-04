@@ -8,14 +8,19 @@ const nameOf = m => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 
 // Keys lo..hi (both white) spread over [x0,x1]. blackXs: detected black-key centers from the video, used if the count matches.
 function layout(lo, hi, x0, x1, blackXs) {
-  const whites = [], blacks = [];
-  for (let m = lo; m <= hi; m++) (isBlack(m) ? blacks : whites).push(m);
-  const W = (x1 - x0) / whites.length, useDet = blackXs && blackXs.length === blacks.length;
+  const whites = [];
+  for (let m = lo; m <= hi; m++) if (!isBlack(m)) whites.push(m);
+  const W = (x1 - x0) / whites.length;
   const off = {1: -.1, 3: .1, 6: -.15, 8: 0, 10: .15}; // black keys sit a little off the white-key boundary
-  const keys = []; let wi = 0, bi = 0;
+  const keys = []; let wi = 0;
   for (let m = lo; m <= hi; m++) {
     if (!isBlack(m)) { keys.push({m, x: x0 + (wi + .5) * W, w: W, black: false}); wi++; }
-    else keys.push({m, x: useDet ? blackXs[bi++] : x0 + (wi + off[m % 12]) * W, w: W * .6, black: true});
+    else {
+      // each black key takes the dark runs near where it should be (averaged: a lit stripe can split one in two); a key
+      // lit in the calibration frame has none and keeps the expected spot, so one miss no longer shifts every key after it
+      const ex = x0 + (wi + off[m % 12]) * W, near = (blackXs || []).filter(x => Math.abs(x - ex) < .35 * W);
+      keys.push({m, x: near.length ? near.reduce((p, q) => p + q, 0) / near.length : ex, w: W * .6, black: true});
+    }
   }
   return keys;
 }
@@ -96,6 +101,31 @@ function extractNotes(times, frames, keyMs, maxGap = .25, upper = null) {
   }
   return notes.sort((a, b) => a.t - b.t || a.m - b.m);
 }
+
+// Videos whose pressed keys light up: the key surface is a cleaner signal than the falling bars (hollow neon bars, sparks,
+// glow). barHues: per key, hue of the most saturated bright pixel within half a key of its center (-1 = none); hollow
+// bars still give their colored edges, so this tells the hands apart where the over-exposed key surface cannot.
+function barHues(d, width, keys) {
+  const ww = keys.find(k => !k.black).w;
+  return Int16Array.from(keys, k => {
+    let best = null; const hw = (k.black ? k.w : ww) / 2;
+    for (let x = Math.max(0, Math.round(k.x - hw)); x <= Math.min(width - 1, k.x + hw); x++) {
+      const p = hsv(d[x * 4], d[x * 4 + 1], d[x * 4 + 2]); if (p[1] >= .4 && p[2] >= .4 && (!best || p[1] * p[2] > best[1] * best[2])) best = p;
+    }
+    return best ? Math.round(best[0]) : -1;
+  });
+}
+// give each note the hue of the last bar seen above its key in the second before it was pressed
+function barHueNotes(notes, times, hues, keyMs) {
+  for (const n of notes) {
+    const k = keyMs.indexOf(n.m); let i = times.findIndex(t => t > n.t + .05); if (i < 0) i = times.length;
+    for (let j = i - 1; j >= 0 && times[j] >= n.t - 1; j--) if (hues[j][k] >= 0) { n.hue = hues[j][k]; break; }
+  }
+  return notes;
+}
+// share of very short notes: a detection line that cuts bars into fragments gives far more of them
+const fragFrac = ns => ns.length ? ns.filter(n => n.d < .1).length / ns.length : 1;
+const useKeys = (line, key) => key.length >= 30 && fragFrac(key) < fragFrac(line) - .15;
 
 // Two color clusters (2-means on the hue circle); the one with lower average pitch is the left hand.
 function assignHands(notes) {
@@ -269,6 +299,6 @@ function beatGrid(notes) {
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);
