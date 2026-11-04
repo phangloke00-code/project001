@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>落键练琴</title><meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root{--bg:#1c1e23;--bg2:#262930;--bg3:#30343d;--line:#3a3f4a;--ink:#eceef3;--muted:#9aa0ad;--acc:#9bd35a;--acc-ink:#15220a;--bad:#ff7272;--good:#6be39a;color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+header{display:flex;gap:8px;align-items:center;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5}
+h1{font-size:17px;margin:0 auto 0 0;letter-spacing:.5px} h2{font-size:15px;margin:0 0 8px} h3{font-size:14px;margin:14px 0 6px}
+button,select,input{font:inherit;color:inherit}
+button,select{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer;min-height:34px}
+button:hover{border-color:#566}
+button.on,button.pri{background:var(--acc);color:var(--acc-ink);border-color:transparent;font-weight:600}
+input[type=text],input[type=url]{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;flex:1;min-width:0}
+input[type=range]{accent-color:var(--acc);flex:1;min-width:80px}
+main>section{padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1200px;margin:0 auto}
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.lbl{display:flex;align-items:center;gap:6px;min-width:200px;flex:1}
+.lbl>span:first-child{color:var(--muted);white-space:nowrap;min-width:64px}
+.muted{color:var(--muted)} .mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{border:0;border-radius:0;min-height:32px}
+.song{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.song b{flex:1;min-width:140px}
+canvas{display:block;max-width:100%}
+#calCv{width:100%;border-radius:8px;background:#000}
+#stage{width:100%;height:min(64vh,680px);border-radius:10px;touch-action:none;background:#2c2e33}
+#hud{min-height:22px} #sum{margin-top:8px}
+.bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--acc);width:0}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:500}
+.tl{display:flex;height:34px;gap:1px;align-items:flex-end;background:var(--bg);border-radius:6px;padding:2px;overflow:hidden}.tl>i{flex:1;background:var(--bad);min-height:1px;border-radius:2px 2px 0 0}
+.big{font-size:26px;font-weight:700}
+.stat{display:inline-block;margin:0 18px 6px 0}.stat .muted{display:block;font-size:12px}
+dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:12px;width:min(92vw,420px)}dialog input{width:100%}dialog::backdrop{background:#0008}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
+kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
+</style></head><body>
+<header><h1>🎹 落键练琴</h1><button data-go="lib">曲库</button></header>
+<main>
+<!-- ================= 导入 / 曲库 ================= -->
+<section id="lib">
+  <div class="card">
+    <h2>导入教学视频</h2>
+    <p class="muted" style="margin:0 0 8px">支持“音符从上往下掉”的钢琴教学视频（mp4 / webm），也可以直接导入 MIDI 文件。</p>
+    <div class="row"><input id="file" type="file" accept="video/*,.mid,.midi" hidden><button class="pri" data-act="pick">选择视频或 MIDI 文件</button></div>
+    <div class="row"><input id="yt" type="url" placeholder="或粘贴 YouTube 链接"><button data-act="yt">下载并识别</button></div>
+    <div id="ytMsg" class="muted"></div>
+  </div>
+  <div class="card"><h2>我的曲子</h2><div id="songList"></div></div>
+</section>
+
+<!-- ================= 校准 + 识别 ================= -->
+<section id="cal" hidden>
+  <div class="card">
+    <h2>对齐键盘 <span id="calTitle" class="muted"></span></h2>
+    <p class="muted" style="margin:0 0 8px">已自动找键盘。检查：<b style="color:#4fd1ff">蓝线</b>在键盘上沿，<b style="color:#ffd84a">黄线</b>是检测线（在键盘上方一点点），每个键上的小点要对准琴键，画面上的 C 标签和视频里的一致。点亮的小点 = 这一帧识别到的音符。</p>
+    <canvas id="calCv"></canvas>
+    <div class="row"><span class="muted">画面</span><input id="calSeek" type="range" min="0" step="0.1" value="0"><span id="calTime" class="mono muted"></span></div>
+    <div class="row">
+      <label class="lbl"><span>键盘上沿</span><input id="cTop" type="range" min="0"></label>
+      <label class="lbl"><span>检测线</span><input id="cLine" type="range" min="0"></label>
+    </div>
+    <div class="row">
+      <label class="lbl"><span>键盘左端</span><input id="cX0" type="range" min="0"></label>
+      <label class="lbl"><span>键盘右端</span><input id="cX1" type="range" min="0"></label>
+    </div>
+    <div class="row">
+      <span class="muted">最低键</span><select id="cLo"></select><span class="muted">最高键</span><select id="cHi"></select>
+      <label class="lbl"><span>亮度阈值</span><input id="cV" type="range" min="0.15" max="0.8" step="0.01" value="0.4"></label>
+      <button data-act="auto">重新自动对齐</button>
+    </div>
+    <div id="calInfo" class="muted"></div>
+    <div class="row">
+      <span class="muted">识别速度</span><select id="scanRate"><option value="1">1×（最准）</option><option value="2" selected>2×</option><option value="4">4×（快，可能漏音）</option></select>
+      <span class="muted">从当前画面开始识别到结尾</span>
+      <button class="pri" data-act="scan" id="scanBtn">开始识别</button><button data-act="scanStop" id="scanStop" hidden>停止并使用已识别部分</button>
+    </div>
+    <div class="bar"><i id="scanBar"></i></div>
+  </div>
+</section>
+
+<!-- ================= 播放 / 练习 ================= -->
+<section id="play" hidden>
+  <div class="row"><h2 id="pTitle" style="margin:0;flex:1"></h2><button data-act="stats">📊 分析</button></div>
+  <canvas id="stage"></canvas>
+  <div id="hud" class="mono muted"></div>
+  <div class="row">
+    <button class="pri" data-act="toggle" id="playBtn" style="min-width:76px">▶ 播放</button><button data-act="restart" title="回到开头">⏮</button>
+    <input id="seek" type="range" min="0" step="0.05"><span id="tm" class="mono muted"></span>
+  </div>
+  <div class="row">
+    <span class="muted">模式</span><span class="seg" id="modeSeg"><button data-mode="demo">看演示</button><button data-mode="wait">等我弹</button><button data-mode="follow">跟节奏</button></span>
+    <span class="muted">练</span><span class="seg" id="handSeg"><button data-hand="L">左手</button><button data-hand="R">右手</button><button data-hand="both">双手</button></span>
+  </div>
+  <div class="row">
+    <label class="lbl"><span>速度 <b id="rateV" class="mono">100%</b></span><input id="rate" type="range" min="0.25" max="1.5" step="0.05" value="1"></label>
+    <label class="lbl"><span>左手音量</span><input id="volL" type="range" min="0" max="1" step="0.05"></label>
+    <label class="lbl"><span>右手音量</span><input id="volR" type="range" min="0" max="1" step="0.05"></label>
+  </div>
+  <div class="row">
+    <button data-act="setA">设 A</button><button data-act="setB">设 B</button><button data-act="clrLoop">取消循环</button><span id="loopV" class="muted"></span>
+    <button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
+    <button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
+  </div>
+  <div class="row muted">
+    暂停时点音符：<select id="editSel"><option value="f">改指法 1→5</option><option value="h">换左右手</option></select>
+    <button data-act="refing">重新自动指法</button><button data-act="midi">导出 MIDI</button>
+  </div>
+  <div id="micHud" class="mono muted"></div>
+  <div id="sum"></div>
+  <p class="muted" style="font-size:12px">输入方式：USB/蓝牙 MIDI 键盘（最准）· 麦克风听真钢琴 · 电脑键盘 <kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd>… = C D E…（<kbd>Z</kbd>/<kbd>X</kbd> 换八度，空格 播放/暂停）· 点画面下方的琴键。</p>
+</section>
+
+<!-- ================= 分析 ================= -->
+<section id="stats" hidden>
+  <div class="row"><h2 id="sTitle" style="margin:0;flex:1"></h2><button data-go="play">← 回去练习</button></div>
+  <div id="statsBody"></div>
+</section>
+</main>
+<video id="vid" playsinline muted hidden></video>
+<div id="toast" hidden></div>
+<dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
+<script src="core.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=t=>{t=Math.max(0,t);return Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0");};
+function toast(msg){const t=$("toast");t.textContent=msg;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>t.hidden=true,msg.length>30?6000:2500);}
+// 页面内确认框（嵌入的网页里浏览器的 confirm/prompt 不弹出）
+function ask(msg,def){ const d=$("dlg"),i=$("dlgIn"); $("dlgMsg").textContent=msg; i.hidden=def==null; i.value=def??""; d.returnValue=""; d.showModal(); return new Promise(r=>d.onclose=()=>r(d.returnValue!=="ok"?null:def==null?true:i.value.trim()||null)); }
+const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}})();
+const store={get(k,d){try{const v=localStorage.getItem("pv-"+k);return v?JSON.parse(v):d;}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}}};
+let songs=store.get("songs",[]);
+const saveSongs=()=>store.set("songs",songs.map(s=>({...s,notes:s.notes.map(({hit,miss,...n})=>n)})));
+function show(id){ if(id!=="play"&&id!=="stats") pause(); for(const s of document.querySelectorAll("main>section")) s.hidden=s.id!==id; if(id==="lib") renderLib(); if(id==="stats") renderStats(); scrollTo(0,0); }
+
+/* ===================== 声音 ===================== */
+let AC,master;
+function ac(){ if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();newMaster();} if(AC.state==="suspended") AC.resume(); return AC; }
+function newMaster(){ try{master?.disconnect();}catch(e){} master=AC.createDynamicsCompressor(); const g=AC.createGain(); g.gain.value=.7; master.connect(g); g.connect(AC.destination); }
+function tone(m,dur=.5,vel=.8,when=0){
+  if(vel<=0) return;
+  const a=ac(), t0=a.currentTime+when, f=440*2**((m-69)/12), end=t0+Math.max(dur,.12);
+  const g=a.createGain(), peak=.32*vel*(m<48?1.25:1);
+  g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(peak,t0+.006);
+  g.gain.setTargetAtTime(peak*.25,t0+.006,.35); g.gain.setTargetAtTime(0,end,.07);
+  const o1=a.createOscillator(); o1.type="triangle"; o1.frequency.value=f;
+  const o2=a.createOscillator(); o2.type="sine"; o2.frequency.value=f*2;
+  const g2=a.createGain(); g2.gain.value=.22;
+  o1.connect(g); o2.connect(g2); g2.connect(g); g.connect(master);
+  o1.start(t0); o2.start(t0); o1.stop(end+.5); o2.stop(end+.5);
+}
+
+/* ===================== 导入 ===================== */
+document.addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.dataset.go) return show(b.dataset.go);
+  if(b.dataset.open!=null) return openSong(songs[+b.dataset.open]);
+  if(b.dataset.del!=null){ const i=+b.dataset.del; ask(`删除《${songs[i].title}》和它的练习记录？`).then(ok=>{ if(!ok) return; try{localStorage.removeItem("pv-att-"+songs[i].id);}catch(e){} songs.splice(i,1); saveSongs(); renderLib(); }); return; }
+  if(b.dataset.ren!=null){ const s=songs[+b.dataset.ren]; ask("曲名",s.title).then(v=>{ if(v){s.title=v; saveSongs(); renderLib();} }); return; }
+  if(b.dataset.mode) return setMode(b.dataset.mode);
+  if(b.dataset.hand) return setHand(b.dataset.hand);
+  if(b.dataset.loop) { const [a,z]=b.dataset.loop.split(",").map(Number); S.loop={a,b:z}; finishRec(); resetFrom(a); show("play"); return uiSync(); }
+  if(b.dataset.replay!=null) return replay(+b.dataset.replay);
+  ACT[b.dataset.act]?.(b);
+});
+const ACT={
+  pick:()=>$("file").click(),
+  yt:loadYT, auto:()=>{CAL.auto=true;drawCal();}, scan, scanStop:()=>{SCAN.stop=true;SCAN.done?.();},
+  toggle:()=>S.playing?pause():play(), restart:()=>{finishRec();resetFrom(startT());},
+  setA:()=>{S.loop={a:S.t,b:Math.max(S.t+1,S.loop?.b??S.song.dur)};uiSync();},
+  setB:()=>{ if(!S.loop) S.loop={a:startT(),b:S.t}; else if(S.t>S.loop.a) S.loop.b=S.t; uiSync(); },
+  clrLoop:()=>{S.loop=null;uiSync();},
+  fing:()=>{S.fing=!S.fing;uiSync();}, full:()=>{S.full=!S.full;uiSync();},
+  mic:micToggle, stats:()=>show("stats"),
+  refing:async()=>{ if(await ask("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
+  midi:()=>{ if(inFrame) return toast("这里不能下载文件。导出 MIDI 请用 GitHub Pages 或本地 server.py 打开的版本。"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([PV.toMidi(S.song.notes)],{type:"audio/midi"})); a.download=S.song.title+".mid"; a.click(); },
+  stopReplay:()=>{ if(AC) newMaster(); },
+};
+$("file").onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f) return;
+  const title=f.name.replace(/\.[^.]+$/,"");
+  if(/\.midi?$/i.test(f.name)){ try{ const notes=PV.fromMidi(await f.arrayBuffer()); if(!notes.length) throw new Error("文件里没有音符"); newSong(title,notes,{L:95,R:355}); }catch(err){ toast("MIDI 读取失败："+err.message); } return; }
+  loadVideo(URL.createObjectURL(f),title);
+};
+async function loadYT(){
+  const url=$("yt").value.trim(); if(!url) return toast("先粘贴 YouTube 链接");
+  const msg=$("ytMsg"); msg.textContent="下载中…（视频越长越久）";
+  try{
+    const r=await fetch("api/yt?url="+encodeURIComponent(url));
+    if(!r.ok) throw new Error(r.status===404?"NO_SERVER":(await r.text()).replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,200));
+    const blob=await r.blob(); if(!blob.type.startsWith("video")) throw new Error("NO_SERVER");
+    msg.textContent=""; loadVideo(URL.createObjectURL(blob),"YouTube "+(url.match(/(?:v=|youtu\.be\/)([\w-]{6,})/)?.[1]||""));
+  }catch(err){
+    msg.innerHTML=err.message==="NO_SERVER"||err.name==="TypeError"
+      ?"浏览器不能直接下载 YouTube 视频。在电脑上运行本文件夹里的 <code>server.py</code>（需要 <code>pip install yt-dlp</code>），然后打开 <code>http://localhost:8000/</code> 再粘贴链接。或者先把视频下载成 mp4 再上传。"
+      :"下载失败："+esc(err.message);
+  }
+}
+function newSong(title,notes,colors){
+  if(notes.some(n=>!n.f)) PV.fingering(notes);
+  const s={id:Date.now().toString(36),title,notes,colors,dur:Math.max(...notes.map(n=>n.t+n.d))};
+  songs.unshift(s); saveSongs(); openSong(s);
+}
+function renderLib(){
+  $("songList").innerHTML=songs.length?songs.map((s,i)=>`<div class="song"><b>${esc(s.title)}</b><span class="muted">${s.notes.length} 个音 · ${fmt(s.dur)}</span><button class="pri" data-open="${i}">练习</button><button data-ren="${i}">改名</button><button data-del="${i}">删除</button></div>`).join("")
+    :`<p class="muted">还没有曲子，先导入一个视频。</p>`;
+}
+
+/* ===================== 校准 + 识别视频 ===================== */
+const V=$("vid"), cc=$("calCv"), cctx=cc.getContext("2d",{willReadFrequently:true});
+const CAL={scale:1,w:0,h:0,top:0,lineY:0,x0:0,x1:0,lo:21,hi:108,vMin:.4,blackXs:[],auto:true,title:""};
+let SCAN={}, frameData=null;
+const WHITES=[]; for(let m=21;m<=108;m++) if(!PV.isBlack(m)) WHITES.push(m);
+for(const id of ["cLo","cHi"]) $(id).innerHTML=WHITES.map(m=>`<option value="${m}">${PV.nameOf(m)}</option>`).join("");
+function loadVideo(url,title){ CAL.title=title; CAL.auto=true; $("calTitle").textContent=title; $("scanBar").style.width="0"; V.src=url; show("cal"); $("calInfo").textContent="载入视频…"; }
+V.onloadedmetadata=()=>{
+  CAL.scale=Math.min(1,960/V.videoWidth); CAL.w=Math.round(V.videoWidth*CAL.scale); CAL.h=Math.round(V.videoHeight*CAL.scale);
+  cc.width=CAL.w; cc.height=CAL.h;
+  for(const id of ["cTop","cLine"]) $(id).max=CAL.h-1; for(const id of ["cX0","cX1"]) $(id).max=CAL.w;
+  $("calSeek").max=V.duration; V.currentTime=$("calSeek").value=Math.min(V.duration*.3,30); // a frame with notes on screen
+};
+V.onerror=()=>{ if(!$("cal").hidden) $("calInfo").textContent="这个视频浏览器解不了码，换 mp4（H.264）格式试试。"; };
+V.onseeked=()=>{ if(!SCAN.running) drawCal(); };
+$("calSeek").oninput=e=>{V.currentTime=+e.target.value;};
+const lum=(d,i)=>.299*d[i]+.587*d[i+1]+.114*d[i+2];
+function rowLuma(y){ const w=CAL.w, o=Math.max(0,Math.min(CAL.h-1,Math.round(y)))*w*4, out=new Array(w); for(let x=0;x<w;x++) out[x]=lum(frameData,o+x*4); return out; }
+const blackRowY=()=>CAL.top+(CAL.h-CAL.top)*.3;
+function autoDetect(){
+  const {w,h}=CAL, rows=[];
+  for(let y=0;y<h;y++){ let s=0; for(let x=0;x<w;x+=3) s+=lum(frameData,(y*w+x)*4); rows.push(s/Math.ceil(w/3)); }
+  let best=-1e9, by=Math.round(h*.8);
+  for(let y=Math.round(h*.4);y<h-10;y++){ let a=0,b=0; for(let k=1;k<=8;k++){a+=rows[y-k];b+=rows[y+k-1];} if(b-a>best){best=b-a;by=y;} } // dark falling area -> bright white keys
+  CAL.top=by; CAL.lineY=Math.max(0,by-Math.max(4,Math.round(h*.012)));
+  const lw=rowLuma(by+(h-by)*.85); let x0=0,x1=w; while(x0<w-1&&lw[x0]<140)x0++; while(x1>x0+1&&lw[x1-1]<140)x1--;
+  CAL.x0=x0; CAL.x1=x1;
+  const n=PV.detectBlacks(rowLuma(blackRowY()),x0,x1).length, nb=(lo,hi)=>{let c=0;for(let m=lo;m<=hi;m++)c+=PV.isBlack(m);return c;};
+  const r=[[21,108],[28,103],[36,96],[36,84],[48,96],[48,84]].find(([lo,hi])=>nb(lo,hi)===n)||[21,108];
+  [CAL.lo,CAL.hi]=r;
+}
+function calKeys(){ CAL.blackXs=PV.detectBlacks(rowLuma(blackRowY()),Math.round(CAL.x0),Math.round(CAL.x1)); return PV.layout(CAL.lo,CAL.hi,CAL.x0,CAL.x1,CAL.blackXs); }
+function sampleRow(d,keys){ return Int16Array.from(keys,k=>PV.probeHue(PV.probesOf(k).map(px=>{const i=Math.max(0,Math.min(CAL.w-1,Math.round(px)))*4;return [d[i],d[i+1],d[i+2]];}),CAL.vMin)); }
+function drawCal(){
+  if(!CAL.w) return;
+  cctx.drawImage(V,0,0,CAL.w,CAL.h); frameData=cctx.getImageData(0,0,CAL.w,CAL.h).data;
+  if(CAL.auto){ autoDetect(); CAL.auto=false; }
+  $("cTop").value=CAL.top; $("cLine").value=CAL.lineY; $("cX0").value=CAL.x0; $("cX1").value=CAL.x1; $("cLo").value=CAL.lo; $("cHi").value=CAL.hi;
+  $("calTime").textContent=fmt(V.currentTime)+" / "+fmt(V.duration);
+  const keys=calKeys(), y=Math.round(CAL.lineY), hues=sampleRow(frameData.subarray(y*CAL.w*4,(y+1)*CAL.w*4),keys);
+  const L=(yy,c)=>{cctx.fillStyle=c;cctx.fillRect(0,yy-1,CAL.w,2);};
+  L(CAL.top,"#4fd1ff"); L(y,"#ffd84a");
+  cctx.font="11px sans-serif"; cctx.textAlign="center"; let lit=0;
+  keys.forEach((k,i)=>{
+    const on=hues[i]>=0; lit+=on;
+    cctx.fillStyle=on?`hsl(${hues[i]} 90% 60%)`:k.black?"#ff4fd8":"#fff";
+    cctx.beginPath(); cctx.arc(k.x,y-(k.black?9:5),on?5:2.2,0,7); cctx.fill();
+    if(on){cctx.strokeStyle="#fff";cctx.lineWidth=1.5;cctx.stroke();}
+    if(k.m%12===0){ cctx.fillStyle="#ffd84a"; cctx.fillText(PV.nameOf(k.m),k.x,CAL.top-14); cctx.fillRect(k.x-k.w/2,CAL.top,1,CAL.h-CAL.top); }
+  });
+  const nb=keys.filter(k=>k.black).length;
+  $("calInfo").textContent=`${PV.nameOf(CAL.lo)}–${PV.nameOf(CAL.hi)}，共 ${keys.length} 键 · 黑键位置${CAL.blackXs.length===nb?"已按画面对齐":"按标准间距（画面里找到 "+CAL.blackXs.length+" 个黑键，应为 "+nb+"）"} · 这一帧检测线上亮着 ${lit} 个键`;
+}
+for(const [id,k] of [["cTop","top"],["cLine","lineY"],["cX0","x0"],["cX1","x1"],["cLo","lo"],["cHi","hi"],["cV","vMin"]])
+  $(id).oninput=e=>{ CAL[k]=+e.target.value; if(CAL.hi<=CAL.lo) CAL.hi=Math.min(108,CAL.lo+12); drawCal(); };
+
+async function scan(){
+  if(!CAL.w) return;
+  const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=1;
+  const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, sh=Math.max(1,1/CAL.scale);
+  const times=[], frames=[], start=V.currentTime; let last=-1;
+  SCAN={running:true,stop:false}; $("scanBtn").hidden=true; $("scanStop").hidden=false;
+  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); times.push(t); frames.push(sampleRow(sx.getImageData(0,0,CAL.w,1).data,keys)); $("scanBar").style.width=(100*(t-start)/(V.duration-start||1))+"%"; };
+  V.muted=true; V.playbackRate=+$("scanRate").value;
+  await new Promise(res=>{
+    SCAN.done=()=>{ V.pause(); res(); }; V.onended=SCAN.done;
+    if(V.requestVideoFrameCallback){ const cb=(now,meta)=>{ grab(meta.mediaTime); if(!V.ended&&!SCAN.stop) V.requestVideoFrameCallback(cb); }; V.requestVideoFrameCallback(cb); }
+    else { const f=()=>{ grab(V.currentTime); if(!V.ended&&!SCAN.stop) requestAnimationFrame(f); }; requestAnimationFrame(f); }
+    V.play().catch(e=>{ toast("视频无法播放："+e.message); SCAN.done(); });
+  });
+  V.onended=null; V.playbackRate=1; SCAN.running=false; $("scanBtn").hidden=false; $("scanStop").hidden=true;
+  const notes=PV.extractNotes(times,frames,km);
+  if(!notes.length) return toast("没识别到音符：把黄色检测线放在音符经过的地方（键盘上方一点），或调低亮度阈值再试。");
+  const fps=times.length/Math.max(.1,last-start);
+  if(fps<18) toast(`识别时每秒只读到 ${fps.toFixed(0)} 帧，快速音符可能漏掉，建议用 1× 重新识别。`);
+  const colors=PV.assignHands(notes); notes.forEach(n=>delete n.hue);
+  const t0=notes[0].t-2; if(t0>0) notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // start 2 s before the first note
+  newSong(CAL.title,notes,colors);
+}
+
+/* ===================== 播放 / 练习状态 ===================== */
+const WIN=.2; // 跟节奏模式：早/晚 0.2 秒内算弹对
+const cv=$("stage"), cx=cv.getContext("2d");
+const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:.8,R:.8},fing:true,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
+  store.get("set",{}));
+const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,full:S.full});
+const isUser=n=>S.mode!=="demo"&&(S.hand==="both"||S.hand===n.h);
+const startT=()=>Math.max(0,(S.song.notes[0]?.t??0)-1.5);
+function openSong(s){ finishRec(); S.song=s; s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); S.loop=null; resetFrom(startT()); $("pTitle").textContent=s.title; $("seek").max=s.dur; $("sum").innerHTML=""; show("play"); uiSync(); }
+function resetFrom(t){
+  const ns=S.song.notes; S.t=t; S.playing&&S.mode!=="demo"&&!S.rec&&(S.rec=newRec());
+  S.next=ns.findIndex(n=>n.t>=t); if(S.next<0) S.next=ns.length; S.fi=S.next;
+  ns.forEach(n=>{n.hit=false;n.miss=false;});
+  S.groups=PV.groupByOnset(ns.filter(n=>n.t>=t&&isUser(n))).map(g=>({t:g.t,notes:g.notes,need:new Set(g.notes.map(n=>n.m)),got:new Set()}));
+  S.gi=0; S.waiting=false;
+}
+function play(){ if(!S.song) return; ac(); if(S.t>=S.song.dur+.9) resetFrom(startT()); if(S.mode!=="demo"&&!S.rec) S.rec=newRec(); S.playing=true; uiSync(); }
+function pause(){ if(!S.playing) return; S.playing=false; uiSync(); }
+function setMode(m){ finishRec(); S.mode=m; resetFrom(S.t); uiSync(); }
+function setHand(h){ finishRec(); S.hand=h; resetFrom(S.t); uiSync(); }
+function uiSync(){
+  for(const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("on",b.dataset.mode===S.mode);
+  for(const b of document.querySelectorAll("[data-hand]")) b.classList.toggle("on",b.dataset.hand===S.hand);
+  $("playBtn").textContent=S.playing?"⏸ 暂停":"▶ 播放";
+  $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R;
+  $("fingBtn").classList.toggle("on",S.fing); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
+  $("loopV").textContent=S.loop?`循环 ${fmt(S.loop.a)}–${fmt(S.loop.b)}`:"";
+  saveSet();
+}
+$("rate").oninput=e=>{S.rate=+e.target.value;uiSync();};
+$("volL").oninput=e=>{S.vol.L=+e.target.value;saveSet();}; $("volR").oninput=e=>{S.vol.R=+e.target.value;saveSet();};
+$("seek").oninput=e=>{ finishRec(); resetFrom(+e.target.value); };
+
+/* ===================== 记录 ===================== */
+function newRec(){ return {date:Date.now(),mode:S.mode,hand:S.hand,rate:S.rate,from:S.t,ev:[],hits:0,wrong:0,miss:0,waits:[],errs:[],wrongAt:[],missAt:[],t0:performance.now()}; }
+function finishRec(){
+  const r=S.rec; S.rec=null; if(!r||!S.song||r.hits+r.wrong+r.miss===0) return;
+  r.to=+S.t.toFixed(2); r.from=+r.from.toFixed(2); r.sec=Math.round((performance.now()-r.t0)/1000); delete r.t0;
+  r.acc=Math.round(100*r.hits/Math.max(1,r.hits+r.wrong+r.miss));
+  const k="att-"+S.song.id, all=store.get(k,[]); all.unshift(r); store.set(k,all.slice(0,60));
+  $("sum").innerHTML=`<div class="card">${summaryHtml(r)}<div class="row"><button data-act="stats">查看详细分析</button><button data-replay="0">▶ 听我刚才弹的</button></div></div>`;
+}
+function summaryHtml(r){
+  const avg=a=>a.length?Math.round(a.reduce((s,x)=>s+x,0)/a.length):0, ab=r.errs.map(Math.abs);
+  return `<span class="stat"><span class="muted">准确率</span><span class="big">${r.acc}%</span></span>`+
+    `<span class="stat"><span class="muted">弹对</span>${r.hits}</span><span class="stat"><span class="muted">弹错</span>${r.wrong}</span>`+
+    (r.mode==="follow"?`<span class="stat"><span class="muted">漏掉</span>${r.miss}</span><span class="stat"><span class="muted">节奏偏差</span>${avg(ab)} ms ${avg(r.errs)>25?"（总体偏晚）":avg(r.errs)<-25?"（总体偏早）":""}</span>`
+      :`<span class="stat"><span class="muted">平均等你</span>${r.waits.length?(r.waits.reduce((s,w)=>s+w[1],0)/r.waits.length).toFixed(1):0} 秒</span>`)+
+    `<span class="stat"><span class="muted">设置</span>${{demo:"演示",wait:"等我弹",follow:"跟节奏"}[r.mode]} · ${{L:"左手",R:"右手",both:"双手"}[r.hand]} · ${Math.round(r.rate*100)}%</span>`;
+}
+function replay(i){
+  const r=store.get("att-"+S.song.id,[])[i]; if(!r) return; ac(); newMaster();
+  r.ev.forEach(([,m,rt])=>tone(m,.45,.8,.15+rt/1000)); toast(`回放 ${r.ev.length} 个音（按“停止回放”结束）`);
+}
+function renderStats(){
+  const s=S.song; if(!s) return; $("sTitle").textContent="📊 "+s.title;
+  const all=store.get("att-"+s.id,[]);
+  if(!all.length){ $("statsBody").innerHTML=`<div class="card muted">还没有练习记录。选“等我弹”或“跟节奏”模式弹一遍就会自动记录。</div>`; return; }
+  // trouble spots: wrong + missed notes + long waits, in 4-second bins over the last 10 attempts
+  const B=4, bins=new Map(), add=(t,w)=>{const k=Math.floor(t/B);bins.set(k,(bins.get(k)||0)+w);};
+  for(const a of all.slice(0,10)){ a.wrongAt.forEach(t=>add(t,1)); a.missAt.forEach(t=>add(t,1)); a.waits.forEach(([t,w])=>w>1.5&&add(t,Math.min(3,w/1.5))); }
+  const nb=Math.ceil(s.dur/B), mx=Math.max(1,...bins.values()), top=[...bins].sort((a,b)=>b[1]-a[1]).slice(0,3);
+  const pts=all.slice(0,30).reverse().map((a,i,arr)=>`${(i/Math.max(1,arr.length-1)*300).toFixed(1)},${(60-a.acc*.56).toFixed(1)}`).join(" ");
+  const days=new Set(all.map(a=>new Date(a.date).toDateString())).size, mins=Math.round(all.reduce((x,a)=>x+(a.sec||0),0)/60);
+  $("statsBody").innerHTML=`
+  <div class="card"><h3 style="margin-top:0">最近一次</h3>${summaryHtml(all[0])}</div>
+  <div class="card"><h3 style="margin-top:0">进步曲线（准确率，最近 30 次）</h3>
+    <svg viewBox="-4 -4 308 68" style="width:100%;max-width:520px;height:90px"><line x1="0" y1="4" x2="300" y2="4" stroke="#3a3f4a"/><line x1="0" y1="32" x2="300" y2="32" stroke="#3a3f4a"/><line x1="0" y1="60" x2="300" y2="60" stroke="#3a3f4a"/>
+    <polyline points="${pts}" fill="none" stroke="#9bd35a" stroke-width="2.5" stroke-linejoin="round"/></svg>
+    <div class="muted">共练 ${all.length} 次 · ${days} 天 · 约 ${mins} 分钟</div></div>
+  <div class="card"><h3 style="margin-top:0">哪里最难（最近 10 次的错音、漏音、卡住）</h3>
+    <div class="tl">${Array.from({length:nb},(_,k)=>`<i style="height:${(100*(bins.get(k)||0)/mx).toFixed(0)}%" title="${fmt(k*B)}"></i>`).join("")}</div>
+    <div class="row muted mono" style="justify-content:space-between;margin:2px 0"><span>0:00</span><span>${fmt(s.dur)}</span></div>
+    ${top.length?top.map(([k])=>`<div class="row"><span class="mono">${fmt(k*B)}–${fmt(k*B+B)}</span><button data-loop="${Math.max(0,k*B-1)},${k*B+B+.5}">🔁 循环练这段</button></div>`).join(""):`<p class="muted">没有明显难点 👍</p>`}</div>
+  <div class="card"><h3 style="margin-top:0">练习记录</h3><table><tr><th>时间</th><th>设置</th><th>准确率</th><th>错/漏</th><th></th></tr>
+    ${all.map((a,i)=>`<tr><td>${new Date(a.date).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</td><td>${{demo:"演示",wait:"等我弹",follow:"跟节奏"}[a.mode]} · ${{L:"左",R:"右",both:"双"}[a.hand]} · ${Math.round(a.rate*100)}%</td><td><b>${a.acc}%</b></td><td>${a.wrong}/${a.miss}</td><td><button data-replay="${i}">▶ 回放</button></td></tr>`).join("")}
+  </table><div class="row"><button data-act="stopReplay">停止回放</button></div></div>`;
+}
+
+/* ===================== 每帧：推进时间 ===================== */
+function step(dt,now){
+  if(!S.playing) return;
+  const ns=S.song.notes; let nt=S.t+dt*S.rate;
+  if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&nt>=g.t){ nt=g.t; if(!S.waiting){S.waiting=true;g.from=now;} } } // 只有听到你弹对，时间才继续走
+  while(S.next<ns.length&&ns[S.next].t<=nt){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,n.d/S.rate,S.vol[n.h]); }
+  if(S.mode==="follow"){ const win=WIN*S.rate; while(S.fi<ns.length&&ns[S.fi].t+win<nt){ const n=ns[S.fi++]; if(isUser(n)&&!n.hit){ n.miss=true; if(S.rec){S.rec.miss++;S.rec.missAt.push(+n.t.toFixed(2));} } } }
+  S.t=nt;
+  if(MIC.on){ // 麦克风：只确认"该弹的音有没有响"，不判错音（麦克风判错音不可靠）
+    if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&S.t>=g.t-.3*S.rate) for(const m of g.need) if(!g.got.has(m)&&micHas(m,now)) noteOn(m,"mic"); }
+    if(S.mode==="follow") for(let i=S.fi;i<ns.length&&ns[i].t<=S.t+WIN*S.rate;i++){ const n=ns[i]; if(isUser(n)&&!n.hit&&micHas(n.m,now)) noteOn(n.m,"mic"); }
+  }
+  if(S.loop&&S.t>=S.loop.b){ finishRec(); resetFrom(S.loop.a); }
+  else if(S.t>S.song.dur+1){ S.playing=false; finishRec(); uiSync(); }
+}
+
+/* ===================== 输入 ===================== */
+function userVol(){ return S.hand==="both"||S.mode==="demo"?Math.max(S.vol.L,S.vol.R):S.vol[S.hand]; }
+function noteOn(m,src){
+  const now=performance.now(); S.user.set(m,now);
+  if(src==="key"||src==="tap") tone(m,.5,Math.max(.4,userVol())); // MIDI 琴和真钢琴自己会响
+  if(!S.song||!S.playing||S.mode==="demo") return;
+  const r=S.rec, ns=S.song.notes; r?.ev.push([+S.t.toFixed(3),m,Math.round(now-r.t0)]);
+  if(S.mode==="wait"){
+    const g=S.groups[S.gi];
+    if(g&&g.need.has(m)&&S.t>=g.t-.4*S.rate){
+      if(!g.got.has(m)){ g.got.add(m); fx(m,true); if(r) r.hits++; }
+      if(g.got.size===g.need.size){ g.notes.forEach(n=>n.hit=true); if(g.from&&r) r.waits.push([+g.t.toFixed(2),+((now-g.from)/1000).toFixed(2)]); S.gi++; S.waiting=false; }
+      return;
+    }
+  } else {
+    let best=null, bd=WIN*S.rate;
+    for(let i=S.fi;i<ns.length&&ns[i].t<=S.t+WIN*S.rate;i++){ const n=ns[i]; if(n.m===m&&isUser(n)&&!n.hit&&Math.abs(n.t-S.t)<=bd){bd=Math.abs(n.t-S.t);best=n;} }
+    if(best){ best.hit=true; fx(m,true); if(r){r.hits++;r.errs.push(Math.round((S.t-best.t)/S.rate*1000));} return; }
+  }
+  if(src!=="mic"){ fx(m,false); if(r){r.wrong++;r.wrongAt.push(+S.t.toFixed(2));} }
+}
+const fx=(m,ok)=>S.fx.set(m,[ok,performance.now()+(ok?300:500)]);
+const KM="awsedftgyhujkolp;'"; let oct=4;
+addEventListener("keydown",e=>{
+  if($("play").hidden||e.ctrlKey||e.metaKey||e.altKey||/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)&&e.target.type!=="range") return;
+  if(e.key===" "){ e.preventDefault(); if(!e.repeat) ACT.toggle(); return; }
+  if(e.repeat) return; const k=e.key.toLowerCase();
+  if(k==="z"){oct=Math.max(1,oct-1);return toast("电脑键盘 A = C"+oct);} if(k==="x"){oct=Math.min(7,oct+1);return toast("电脑键盘 A = C"+oct);}
+  const i=KM.indexOf(k); if(i>=0) noteOn(12*(oct+1)+i,"key");
+});
+let midiN=0;
+try{ navigator.requestMIDIAccess?.().then(acc=>{ const bind=()=>{ midiN=0; acc.inputs.forEach(inp=>{ midiN++; inp.onmidimessage=ev=>{ const [st,m,v]=ev.data; if((st&0xf0)===0x90&&v>0) noteOn(m,"midi"); }; }); $("midiV").textContent=midiN?"🎹 已连接 MIDI 键盘":""; }; bind(); acc.onstatechange=bind; }).catch(()=>{}); }catch(e){}
+cv.addEventListener("pointerdown",e=>{
+  const L=S.L; if(!L) return; const r=cv.getBoundingClientRect(), x=(e.clientX-r.left)*L.dpr, y=(e.clientY-r.top)*L.dpr;
+  if(y>=L.top){ const blk=y<L.top+L.kbH*.62, k=L.keys.find(k=>k.black&&blk&&Math.abs(x-k.x)<k.w/2)||L.keys.find(k=>!k.black&&Math.abs(x-k.x)<k.w/2); if(k) noteOn(k.m,"tap"); return; }
+  if(S.playing) return;
+  const n=L.rects.find(([x0,y0,w,h])=>x>=x0&&x<=x0+w&&y>=y0&&y<=y0+h)?.[4]; if(!n) return;
+  if($("editSel").value==="f") n.f=(n.f||0)%5+1; else n.h=n.h==="L"?"R":"L";
+  saveSongs(); resetFrom(S.t);
+});
+
+/* ===================== 画面 ===================== */
+function range(){ if(S.full) return [21,108]; let lo=108,hi=21; S.song.notes.forEach(n=>{lo=Math.min(lo,n.m);hi=Math.max(hi,n.m);});
+  lo=Math.max(21,lo-lo%12); hi=Math.min(108,hi+(12-hi%12)%12); if(hi-lo<24) hi=Math.min(108,lo+24); return [lo,hi]; }
+function rr(x,y,w,h,r){ r=Math.min(r,w/2,h/2); cx.beginPath(); cx.roundRect?cx.roundRect(x,y,w,h,r):cx.rect(x,y,w,h); }
+function draw(now){
+  const dpr=devicePixelRatio||1, W=Math.round(cv.clientWidth*dpr), H=Math.round(cv.clientHeight*dpr);
+  if(!W||!H) return; if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
+  const [lo,hi]=range(), keys=PV.layout(lo,hi,0,W), byM={}; keys.forEach(k=>byM[k.m]=k);
+  const ww=keys.find(k=>!k.black).w, kbH=Math.min(H*.24,ww*6), top=H-kbH, LA=3, pps=top/LA, t=S.t;
+  const dimOther=S.mode!=="demo"&&S.hand!=="both", col=(h,l,a=1)=>`hsl(${S.song.colors?.[h]??(h==="L"?95:355)} 65% ${l}% / ${a})`;
+  // 背景 + 八度线 + 秒线
+  const bg=cx.createLinearGradient(0,0,W,0); bg.addColorStop(0,"#3b3e44"); bg.addColorStop(.55,"#3a2d31"); bg.addColorStop(1,"#2b2b30");
+  cx.fillStyle=bg; cx.fillRect(0,0,W,top);
+  cx.fillStyle="#ffffff14"; keys.forEach(k=>{ if(k.m%12===0||k.m%12===5) cx.fillRect(Math.round(k.x-k.w/2),0,dpr,top); });
+  for(let s=Math.ceil(t);s<t+LA;s++){ const y=top-(s-t)*pps; cx.fillRect(0,y,W,dpr*(s%5?1:1.5)); }
+  // 下落的音符
+  const rects=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.min(ww*.7,15*dpr))}px sans-serif`;
+  for(const n of S.song.notes){
+    if(n.t>t+LA) break; if(n.t+n.d<t-.05) continue; const k=byM[n.m]; if(!k) continue;
+    if(n.t<=t&&n.t+n.d>t) active.set(n.m,n);
+    const y0=Math.max(-10,top-(n.t+n.d-t)*pps), y1=Math.min(top,top-(n.t-t)*pps); if(y1-y0<1) continue;
+    const w=k.black?k.w*.95:k.w*.84, x0=k.x-w/2, dim=dimOther&&n.h!==S.hand;
+    cx.fillStyle=col(n.h,k.black?44:64,dim?.22:n.hit?.55:1); rr(x0,y0,w,y1-y0,4*dpr); cx.fill();
+    if(n.miss){ cx.strokeStyle="#ff4d4d"; cx.lineWidth=2*dpr; cx.stroke(); }
+    if(S.fing&&n.f&&!dim&&y1-y0>14*dpr){ cx.fillStyle=k.black?"#fff":"#1b1b1b"; cx.fillText(n.f,k.x,y1-Math.min(10*dpr,(y1-y0)/2)); }
+    rects.push([x0,y0,w,y1-y0,n]);
+  }
+  // 等待中的目标音
+  const g=S.mode==="wait"?S.groups[S.gi]:null, want=new Map(); if(g&&t>=g.t-.6) g.notes.forEach(n=>{ if(!g.got.has(n.m)) want.set(n.m,n); });
+  // 键盘
+  cx.fillStyle="#7a1f25"; cx.fillRect(0,top-2*dpr,W,2*dpr);
+  const keyFill=(k,base)=>{ const a=active.get(k.m), f=S.fx.get(k.m), u=S.user.get(k.m);
+    if(f&&f[1]>now) return f[0]?"#6be39a":"#ff6b6b";
+    if(a) return dimOther&&a.h!==S.hand?col(a.h,k.black?35:80):col(a.h,k.black?45:60);
+    if(u&&now-u<180) return "#9ecbff"; return base; };
+  for(const k of keys) if(!k.black){ cx.fillStyle=keyFill(k,"#f2f2f2"); cx.fillRect(k.x-k.w/2+.5*dpr,top,k.w-dpr,kbH); if(k.m%12===0){ cx.fillStyle="#888"; cx.font=`${Math.round(Math.min(ww*.42,11*dpr))}px sans-serif`; cx.fillText(PV.nameOf(k.m),k.x,H-8*dpr); } }
+  for(const k of keys) if(k.black){ cx.fillStyle=keyFill(k,"#16161a"); rr(k.x-k.w/2,top,k.w,kbH*.62,2*dpr); cx.fill(); }
+  cx.font=`700 ${Math.round(Math.min(ww*.6,14*dpr))}px sans-serif`;
+  for(const [m,n] of want.size?want:(S.fing?active:new Map())){ const k=byM[m]; if(!k) continue; const y=top+(k.black?kbH*.45:kbH*.78);
+    if(want.size){ cx.strokeStyle=col(n.h,60,.6+.4*Math.sin(now/130)); cx.lineWidth=3*dpr; rr(k.x-k.w/2+dpr,top+dpr,k.w-2*dpr,(k.black?kbH*.62:kbH)-2*dpr,3*dpr); cx.stroke(); }
+    if(S.fing&&n.f){ cx.fillStyle="#000a"; cx.beginPath(); cx.arc(k.x,y,Math.min(k.w*.42,10*dpr),0,7); cx.fill(); cx.fillStyle="#fff"; cx.fillText(n.f,k.x,y+dpr*.5); } }
+  S.L={dpr,keys,top,kbH,rects};
+  const hud=`${fmt(t)} / ${fmt(S.song.dur)}`+(want.size&&S.waiting?`   等你弹：${[...want.values()].map(n=>PV.nameOf(n.m)+(n.f?"("+n.f+"指)":"")).join("  ")}`:"")+(S.rec?`   ✓${S.rec.hits}  ✗${S.rec.wrong}${S.mode==="follow"?"  漏"+S.rec.miss:""}`:"");
+  if($("hud").textContent!==hud) $("hud").textContent=hud;
+  if(!$("seek").matches(":active")) $("seek").value=t; const tm=fmt(t); if($("tm").textContent!==tm) $("tm").textContent=tm;
+}
+function frame(now){ const dt=Math.min(.1,(now-S.last)/1000); S.last=now; if(MIC.on) micFrame(now); if(S.song&&!$("play").hidden){ step(dt,now); draw(now); } requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+
+/* ===================== 麦克风听音（沿用 琴键闯关 的检测） ===================== */
+// 已知要弹哪些音，所以只检查"这几个音在不在"：比较目标音（含泛音）和左右半音的能量，再要求有新的按键起音
+const MIC={on:false,an:null,fd:null,td:null,slow:0,onset:0,floor:-100,sens:20,nf:.002,t0:0,E:new Float32Array(128),prevE:new Float32Array(128),pre:null,used:new Map()};
+async function micToggle(){
+  if(MIC.on){ MIC.stream.getTracks().forEach(t=>t.stop()); MIC.on=false; $("micHud").textContent=""; return uiSync(); }
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    const a=ac(), src=a.createMediaStreamSource(st), an=a.createAnalyser(); an.fftSize=8192; an.smoothingTimeConstant=.3; src.connect(an);
+    Object.assign(MIC,{on:true,stream:st,an,t0:performance.now(),nf:1,pre:null,emitAt:0,fd:new Float32Array(an.frequencyBinCount),td:new Float32Array(an.fftSize)});
+    toast("麦克风已开启：手机/电脑放近钢琴，环境安静一点更准。用 MIDI 键盘会更准。");
+  }catch(e){ toast(inFrame?"这个网页嵌在 claude.ai 里，浏览器不让它用麦克风。用 GitHub Pages 或本地版打开就能听音。":"麦克风没打开："+(e.name==="NotAllowedError"?"浏览器拒绝了权限，在网站设置里允许麦克风再试。":(e.message||e.name))); }
+  uiSync();
+}
+function binDb(f){ const i=f*MIC.an.fftSize/AC.sampleRate, a=Math.floor(i); if(a<1||a+1>=MIC.fd.length) return -200; return Math.max(MIC.fd[a],MIC.fd[a+1]); }
+const HW=[1,1,1,1,.8,.7]; // 谐波和：低音基音很弱，靠泛音也能认出来
+function hsum(m){ const f=440*2**((m-69)/12); let s=0,pk=-200,low=-200; for(let h=1;h<=6;h++){const d=binDb(f*h); s+=HW[h-1]*10**(d/20); if(d>pk) pk=d; if(h<=2&&d>low) low=d;} return {s,pk,lo:10**(low/20),ok:low>=pk-12}; }
+const rose=m=>!MIC.pre||MIC.E[m]>1.3*MIC.pre[m];
+function present(m){ const a=hsum(m); return rose(m)&&a.ok&&a.pk>MIC.floor+MIC.sens&&a.s>hsum(m-1).s*1.3&&a.s>hsum(m+1).s*1.3; }
+// 一次按键（起音）每个音只算一次，免得上一个音的余音把下一个同音也"弹对"了
+function micHas(m,now){ if(!MIC.onset||now-MIC.onset>400||MIC.used.get(m)===MIC.onset||!present(m)) return false; MIC.used.set(m,MIC.onset); return true; }
+function micFrame(now){
+  MIC.an.getFloatTimeDomainData(MIC.td); let s=0; const n=1024, td=MIC.td;
+  for(let i=td.length-n;i<td.length;i++) s+=td[i]*td[i];
+  const rms=Math.sqrt(s/n);
+  MIC.an.getFloatFrequencyData(MIC.fd);
+  const E=MIC.prevE; MIC.prevE=MIC.E; MIC.E=E; for(let m=24;m<=100;m++) E[m]=hsum(m).lo;
+  if(now-MIC.t0<700){ MIC.nf=Math.min(MIC.nf,rms); MIC.slow=rms; return micHud("正在听环境声音，先别弹…"); }
+  MIC.nf=rms<MIC.nf?rms:MIC.nf*1.002;
+  if(rms>Math.max(.006,MIC.nf*4)&&rms>MIC.slow*1.6){ if(now-(MIC.rising||0)>120){ MIC.pre=MIC.prevE.slice(); MIC.onset=now; } MIC.rising=now; }
+  MIC.slow=MIC.slow*.9+rms*.1;
+  let fl=0; for(let i=10;i<410;i++) fl+=MIC.fd[i]; MIC.floor=fl/400;
+  let best=null,bs=0;
+  if(rms>.004){ for(let m=28;m<=96;m++){ const a=hsum(m); if(a.ok&&rose(m)&&a.s>bs){bs=a.s;best=m;} }
+    while(best!=null&&best+12<=96){ const u=hsum(best+12), f=440*2**((best-69)/12), odd=Math.max(binDb(f*3),binDb(f*5));
+      if(u.ok&&rose(best+12)&&u.s>.8*hsum(best).s&&odd<u.pk-18) best+=12; else break; }
+    if(best!=null&&hsum(best).pk<MIC.floor+MIC.sens) best=null; }
+  if(best!=null&&best===MIC.cand) MIC.candN++; else {MIC.cand=best; MIC.candN=1;}
+  if(MIC.cand!=null&&MIC.candN>=4&&MIC.onset>(MIC.emitAt||0)&&now-MIC.onset<350&&rose(MIC.cand)){ MIC.emitAt=now; MIC.shown=MIC.cand; MIC.shownAt=now; S.user.set(MIC.cand,now); }
+  if(rms<.003&&now-(MIC.shownAt||0)>800) MIC.shown=null;
+  micHud(`🎤 听到：${MIC.shown!=null?PV.nameOf(MIC.shown):"—"}  音量 ${"▮".repeat(Math.min(8,Math.round(rms*120)))}${MIC.nf>.02?"  · 环境偏吵":""}`);
+}
+function micHud(t){ const el=$("micHud"); if(el.textContent!==t) el.textContent=t; }
+
+renderLib();
+</script>
+</body></html>
