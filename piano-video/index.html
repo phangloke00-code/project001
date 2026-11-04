@@ -89,6 +89,9 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <input id="seek" type="range" min="0" step="0.05"><span id="tm" class="mono muted"></span>
   </div>
   <div class="row">
+    <span class="muted">速度</span><span class="seg" id="rateSeg"><button data-rate="-">－</button><button data-rate=".5">50%</button><button data-rate=".75">75%</button><button data-rate="1">100%</button><button data-rate="+">＋</button></span>
+  </div>
+  <div class="row">
     <span class="muted">模式</span><span class="seg" id="modeSeg"><button data-mode="demo">看演示</button><button data-mode="wait">等我弹</button><button data-mode="follow">跟节奏</button></span>
     <span class="muted">练</span><span class="seg" id="handSeg"><button data-hand="L">左手</button><button data-hand="R">右手</button><button data-hand="both">双手</button></span>
   </div>
@@ -108,7 +111,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
   </div>
   <div id="micHud" class="mono muted"></div>
   <div id="sum"></div>
-  <p class="muted" style="font-size:12px">输入方式：USB/蓝牙 MIDI 键盘（最准）· 麦克风听真钢琴 · 电脑键盘 <kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd>… = C D E…（<kbd>Z</kbd>/<kbd>X</kbd> 换八度，空格 播放/暂停）· 点画面下方的琴键。</p>
+  <p class="muted" style="font-size:12px">输入方式：USB/蓝牙 MIDI 键盘（最准）· 麦克风听真钢琴 · 电脑键盘 <kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd>… = C D E…（<kbd>Z</kbd>/<kbd>X</kbd> 换八度，<kbd>[</kbd>/<kbd>]</kbd> 减慢/加快，空格 播放/暂停）· 点画面下方的琴键。</p>
 </section>
 
 <!-- ================= 分析 ================= -->
@@ -160,6 +163,7 @@ document.addEventListener("click",e=>{
   if(b.dataset.open!=null) return openSong(songs[+b.dataset.open]);
   if(b.dataset.del!=null){ const i=+b.dataset.del; ask(`删除《${songs[i].title}》和它的练习记录？`).then(ok=>{ if(!ok) return; try{localStorage.removeItem("pv-att-"+songs[i].id);}catch(e){} songs.splice(i,1); saveSongs(); renderLib(); }); return; }
   if(b.dataset.ren!=null){ const s=songs[+b.dataset.ren]; ask("曲名",s.title).then(v=>{ if(v){s.title=v; saveSongs(); renderLib();} }); return; }
+  if(b.dataset.rate) return setRate(b.dataset.rate);
   if(b.dataset.mode) return setMode(b.dataset.mode);
   if(b.dataset.hand) return setHand(b.dataset.hand);
   if(b.dataset.loop) { const [a,z]=b.dataset.loop.split(",").map(Number); S.loop={a,b:z}; finishRec(); resetFrom(a); show("play"); return uiSync(); }
@@ -239,7 +243,7 @@ function autoDetect(){
   for(let y=y0;y<h-10;y++){ let a=0,b=0; for(let k=1;k<=8;k++){a+=rows[y-k];b+=rows[y+k-1];} jump.push(b-a); }
   const mx=Math.max(...jump); let i=jump.findIndex(j=>j>=.6*mx); for(let k=i;k<i+8&&k<jump.length;k++) if(jump[k]>jump[i]) i=k;
   const by=y0+i;
-  CAL.top=by; CAL.lineY=Math.max(0,by-Math.max(6,Math.round(h*.02))); // clear of the colored line many videos draw on top of the keyboard
+  CAL.top=by; CAL.lineY=Math.max(0,by-Math.max(6,Math.round(h*.06))); // clear of the line on top of the keyboard and the glow notes make when they hit it
   const lw=rowLuma(by+(h-by)*.85); let x0=0,x1=w; while(x0<w-1&&lw[x0]<140)x0++; while(x1>x0+1&&lw[x1-1]<140)x1--;
   CAL.x0=x0; CAL.x1=x1;
   const n=PV.detectBlacks(rowLuma(blackRowY()),x0,x1).length, nb=(lo,hi)=>{let c=0;for(let m=lo;m<=hi;m++)c+=PV.isBlack(m);return c;};
@@ -334,12 +338,15 @@ function uiSync(){
   for(const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("on",b.dataset.mode===S.mode);
   for(const b of document.querySelectorAll("[data-hand]")) b.classList.toggle("on",b.dataset.hand===S.hand);
   $("playBtn").textContent=S.playing?"⏸ 暂停":"▶ 播放";
+  for(const b of document.querySelectorAll("[data-rate]")) b.classList.toggle("on",+b.dataset.rate===S.rate);
   $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R;
   $("fingBtn").classList.toggle("on",S.fing); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
   $("loopV").textContent=S.loop?`循环 ${fmt(S.loop.a)}–${fmt(S.loop.b)}`:"";
   saveSet();
 }
 $("rate").oninput=e=>{S.rate=+e.target.value;uiSync();};
+// "+"/"-" step 5 %, a number sets it; kept within the slider's 25–150 %
+function setRate(v){ S.rate=Math.min(1.5,Math.max(.25,+(v==="+"?S.rate+.05:v==="-"?S.rate-.05:+v).toFixed(2))); uiSync(); toast("速度 "+Math.round(S.rate*100)+"%"); }
 $("volL").oninput=e=>{S.vol.L=+e.target.value;saveSet();}; $("volR").oninput=e=>{S.vol.R=+e.target.value;saveSet();};
 $("seek").oninput=e=>{ finishRec(); resetFrom(+e.target.value); };
 
@@ -432,6 +439,7 @@ addEventListener("keydown",e=>{
   if($("play").hidden||e.ctrlKey||e.metaKey||e.altKey||/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)&&e.target.type!=="range") return;
   if(e.key===" "){ e.preventDefault(); if(!e.repeat) ACT.toggle(); return; }
   if(e.repeat) return; const k=e.key.toLowerCase();
+  if(k==="["||k==="]") return setRate(k==="]"?"+":"-");
   if(k==="z"){oct=Math.max(1,oct-1);return toast("电脑键盘 A = C"+oct);} if(k==="x"){oct=Math.min(7,oct+1);return toast("电脑键盘 A = C"+oct);}
   const i=KM.indexOf(k); if(i>=0) noteOn(12*(oct+1)+i,"key");
 });
