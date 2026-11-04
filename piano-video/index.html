@@ -651,8 +651,8 @@ function frame(now){ // 时间跟着声卡的时钟走：画面偶尔卡一下�
   const ta=AC?.state==="running"?AC.currentTime:null, dt=Math.min(.5,ta!=null&&S.lastA!=null?ta-S.lastA:(now-S.last)/1000); S.last=now; S.lastA=ta; if(MIC.on) micFrame(now); if(S.song&&!$("play").hidden){ step(dt,now); draw(now); } requestAnimationFrame(frame); }
 requestAnimationFrame(frame);
 
-/* ===================== 麦克风听音（沿用 琴键闯关 的检测） ===================== */
-// 已知要弹哪些音，所以只检查"这几个音在不在"：比较目标音（含泛音）和左右半音的能量，再要求有新的按键起音
+/* ===================== 麦克风听音 ===================== */
+// 测试场景（合成的钢琴录音当假麦克风）：单音、和弦、八度、泛音关系的错音、伴奏回声、快速连奏，见 PR 说明
 const MIC={on:false,an:null,fd:null,td:null,slow:0,nf:.002,t0:0,ons:[]};
 async function micToggle(){
   if(MIC.on){ MIC.stream.getTracks().forEach(t=>t.stop()); MIC.on=false; $("micHud").textContent=""; return uiSync(); }
@@ -718,6 +718,8 @@ const micOk=(o,m)=>{ const c=o.det.get(m)||0; if(c<4||c<.4*Math.max(...o.det.val
 // 返回用到的那次起音的时间（performance.now 毫秒），没有就 0。okAt：调用方限制起音时间（跟节奏模式要在判定窗里）
 function micHas(m,now,targets,okAt=()=>true){
   for(const o of MIC.ons){ if(now-o.at>700||o.used.has(m)||!okAt(o.at)) continue;
+    // 低八度/低十二度的音也在响、而它不是该弹的：m 多半只是它的泛音（目标 G4、你弹的是 G3），不算
+    if(micOk(o,m)&&[...o.det.keys()].some(q=>[12,19,24].includes(m-q)&&!targets.has(q)&&micOk(o,q))) continue;
     if(micOk(o,m)||[...targets].some(q=>[12,19,24,28,31].includes(m-q)&&micOk(o,q))){ o.used.add(m); return o.at; } }
   return 0; }
 function micFrame(now){
