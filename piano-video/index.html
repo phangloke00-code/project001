@@ -38,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.0 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.1 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -133,7 +133,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=2.0"></script>
+<script src="core.js?v=2.1"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -152,7 +152,7 @@ function show(id){ if(id!=="play"&&id!=="stats") pause(); for(const s of documen
 /* ===================== 声音 ===================== */
 let AC,master;
 function ac(){ if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();newMaster();loadPiano();} if(AC.state==="suspended") AC.resume(); return AC; }
-function newMaster(){ try{master?.disconnect();}catch(e){} master=AC.createDynamicsCompressor(); const g=AC.createGain(); g.gain.value=.7; master.connect(g); g.connect(AC.destination); }
+function newMaster(){ try{master?.disconnect();}catch(e){} master=AC.createGain(); master.gain.value=.5; const c=AC.createDynamicsCompressor(); c.threshold.value=-6; c.knee.value=6; c.ratio.value=4; c.attack.value=.005; c.release.value=.2; master.connect(c); c.connect(AC.destination); } // gentle limiter only: the default compressor pumped on every attack
 // Real piano: Salamander Grand Piano samples (CC-BY 3.0, Alexander Holm), one every 3 keys, pitched to the rest.
 const PIANO={}, VOICE={};
 function loadPiano(){
@@ -166,12 +166,12 @@ function tone(m,dur=.5,vel=.8,when=0){
   if(vel<=0) return;
   const a=ac(), t0=a.currentTime+when, end=t0+Math.max(dur,.12);
   let s=null; for(const k in PIANO) if(s==null||Math.abs(k-m)<Math.abs(s-m)) s=+k;
-  const old=VOICE[m]; if(old&&old.end>t0){ old.g.gain.cancelScheduledValues(t0); old.g.gain.setTargetAtTime(0,t0,.03); } // 同一个键再弹：先止住上一个
+  const old=VOICE[m]; if(old&&old.end>t0) old.g.gain.setTargetAtTime(0,t0,.03); // 同一个键再弹：先止住上一个（不 cancel，否则增益会跳回去 → 爆音）
   if(s!=null&&Math.abs(s-m)<=3){
     const src=a.createBufferSource(), g=a.createGain(); src.buffer=PIANO[s]; src.playbackRate.value=2**((m-s)/12);
-    g.gain.setValueAtTime(vel,t0); g.gain.setTargetAtTime(0,end,S.pedal?.35:.12); // damper falls when the key is released
-    VOICE[m]={g,end:end+1.5};
-    src.connect(g); g.connect(master); src.start(t0,.025); src.stop(end+1.5); return; // .025: skip the mp3 encoder's silent start
+    const tc=S.pedal?.35:.12; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(vel,t0+.004); g.gain.setTargetAtTime(0,end,tc); // 4ms fade-in; damper falls on release
+    VOICE[m]={g,end:end+tc*8};
+    src.connect(g); g.connect(master); src.start(t0,.025); src.stop(end+tc*8); return; // .025: skip the mp3 encoder's silent start
   }
   const f=440*2**((m-69)/12); // samples still loading (or offline): fall back to the synth
   const g=a.createGain(), peak=.32*vel*(m<48?1.25:1);
