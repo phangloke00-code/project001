@@ -127,6 +127,24 @@ function barHueNotes(notes, times, hues, keyMs) {
 const fragFrac = ns => ns.length ? ns.filter(n => n.d < .1).length / ns.length : 1;
 const useKeys = (line, key) => key.length >= 30 && fragFrac(key) < fragFrac(line) - .15;
 
+// Some videos draw the lit stripe off the key's center (Final Season ED: white keys +3.5 px). Measure it from the notes
+// found so far: median centroid of the bright saturated pixels around each key, white and black keys separately, then
+// move the keys there. rows[i] = RGBA pixels of the key row at times[i].
+function stripeShift(rows, times, width, keys, notes) {
+  const ww = keys.find(k => !k.black).w, dev = {w: [], b: []};
+  for (const n of notes) {
+    const k = keys.find(q => q.m === n.m), i = times.findIndex(t => t >= n.t + n.d / 2); if (!k || i < 0) continue;
+    let s = 0, w = 0;
+    for (let x = Math.max(0, Math.round(k.x - ww / 2)); x <= Math.min(width - 1, k.x + ww / 2); x++) {
+      const r = rows[i], p = hsv(r[x * 4], r[x * 4 + 1], r[x * 4 + 2]), q = p[1] > .5 && p[2] > .5 ? p[1] * p[2] : 0; s += q * x; w += q;
+    }
+    if (w) dev[k.black ? "b" : "w"].push(s / w - k.x);
+  }
+  const med = a => a.length >= 10 ? a.sort((x, y) => x - y)[a.length >> 1] : 0, sh = {w: med(dev.w), b: med(dev.b)};
+  for (const c in sh) if (Math.abs(sh[c]) < 1 || Math.abs(sh[c]) > .3 * ww) sh[c] = 0;
+  return keys.map(k => ({...k, x: k.x + sh[k.black ? "b" : "w"]}));
+}
+
 // Two color clusters (2-means on the hue circle); the one with lower average pitch is the left hand.
 function assignHands(notes) {
   const res = {L: 95, R: 355};
@@ -299,6 +317,6 @@ function beatGrid(notes) {
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);

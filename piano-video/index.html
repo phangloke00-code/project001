@@ -38,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.2 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.3 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -133,7 +133,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=2.2"></script>
+<script src="core.js?v=2.3"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -347,11 +347,11 @@ async function fastScan(grab){
 async function scan(){
   if(!CAL.w) return;
   const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=3;
-  const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, upY=upperY()/CAL.scale, sh=Math.max(1,1/CAL.scale), up=[], kf=[], bh=[], kY=blackRowY()/CAL.scale;
+  const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, upY=upperY()/CAL.scale, sh=Math.max(1,1/CAL.scale), up=[], kr=[], bh=[], kY=blackRowY()/CAL.scale;
   const times=[], frames=[], start=0; let last=-1;
   SCAN={running:true,stop:false}; SCAN.done=()=>{ SCAN.stop=true; };
   if(V.currentTime>0){ V.currentTime=0; await new Promise(r=>V.addEventListener("seeked",r,{once:true})); } $("scanBtn").hidden=true; $("scanStop").hidden=false;
-  const grab=(t,src=V)=>{ if(t<=last) return; last=t; sx.drawImage(src,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(src,0,upY,V.videoWidth,sh,0,1,CAL.w,1); sx.drawImage(src,0,kY,V.videoWidth,sh,0,2,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,3).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); kf.push(PV.sampleKeys(d.subarray(CAL.w*8),CAL.w,keys,CAL.vMin,.4)); /* .4: the glow a lit key throws on its neighbours is paler */ bh.push(PV.barHues(d,CAL.w,keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
+  const grab=(t,src=V)=>{ if(t<=last) return; last=t; sx.drawImage(src,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(src,0,upY,V.videoWidth,sh,0,1,CAL.w,1); sx.drawImage(src,0,kY,V.videoWidth,sh,0,2,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,3).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); kr.push(d.slice(CAL.w*8)); /* raw key row: sampled after the scan, once the stripe offset is known */ bh.push(PV.barHues(d,CAL.w,keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
   V.muted=true;
   if($("scanRate").value==="fast"&&await fastScan(grab).catch(e=>{ console.warn("fast scan",e); return false; })){ /* 极速模式已读完 */ }
   else if($("scanRate").value==="bg"||$("scanRate").value==="fast"){
@@ -374,7 +374,8 @@ async function scan(){
   }); }
   document.title="落键练琴";
   V.onended=V.onpause=null; document.removeEventListener("visibilitychange",SCAN.vis); V.playbackRate=1; SCAN.running=false; $("scanBtn").hidden=false; $("scanStop").hidden=true;
-  let notes=PV.extractNotes(times,frames,km,.25,up); const kn=PV.extractNotes(times,kf,km,.25,null);
+  let notes=PV.extractNotes(times,frames,km,.25,up); const kS=ks=>PV.extractNotes(times,kr.map(r=>PV.sampleKeys(r,CAL.w,ks,CAL.vMin,.4)),km,.25,null); /* .4: the glow a lit key throws on its neighbours is paler */
+  let kn=kS(keys); if(kn.length>=30) kn=kS(PV.stripeShift(kr,times,CAL.w,keys,kn));
   if(PV.useKeys(notes,kn)){ notes=PV.barHueNotes(kn,times,bh,km); toast("这个视频按下的琴键会发亮，改用琴键本身来识别。"); } // 检测线上的音符条被切碎了（空心/霓虹音符、火花）
   if(!notes.length) return toast("没识别到音符：把黄色检测线放在音符经过的地方（键盘上方一点），或调低亮度阈值再试。");
   const fps=times.length/Math.max(.1,last-start);
