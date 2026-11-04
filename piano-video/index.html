@@ -35,7 +35,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.7 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.8 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -103,7 +103,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
   </div>
   <div class="row">
     <button data-act="setA">设 A</button><button data-act="setB">设 B</button><button data-act="clrLoop">取消循环</button><span id="loopV" class="muted"></span>
-    <button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
+    <button data-act="pedal" id="pedalBtn" title="像原曲一样踩着延音踏板：短音也会自然地响一会儿">延音踏板</button><button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
     <button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
   </div>
   <div class="row muted">
@@ -125,7 +125,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <div id="toast" hidden></div>
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
-<script src="core.js?v=1.7"></script>
+<script src="core.js?v=1.8"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -145,7 +145,7 @@ let AC,master;
 function ac(){ if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();newMaster();loadPiano();} if(AC.state==="suspended") AC.resume(); return AC; }
 function newMaster(){ try{master?.disconnect();}catch(e){} master=AC.createDynamicsCompressor(); const g=AC.createGain(); g.gain.value=.7; master.connect(g); g.connect(AC.destination); }
 // Real piano: Salamander Grand Piano samples (CC-BY 3.0, Alexander Holm), one every 3 keys, pitched to the rest.
-const PIANO={};
+const PIANO={}, VOICE={};
 function loadPiano(){
   const N={C:0,Ds:3,Fs:6,A:9};
   for(let o=0;o<=8;o++) for(const n in N){ const m=12*(o+1)+N[n]; if(m<21||m>108) continue;
@@ -155,9 +155,11 @@ function tone(m,dur=.5,vel=.8,when=0){
   if(vel<=0) return;
   const a=ac(), t0=a.currentTime+when, end=t0+Math.max(dur,.12);
   let s=null; for(const k in PIANO) if(s==null||Math.abs(k-m)<Math.abs(s-m)) s=+k;
+  const old=VOICE[m]; if(old&&old.end>t0){ old.g.gain.cancelScheduledValues(t0); old.g.gain.setTargetAtTime(0,t0,.03); } // 同一个键再弹：先止住上一个
   if(s!=null&&Math.abs(s-m)<=3){
     const src=a.createBufferSource(), g=a.createGain(); src.buffer=PIANO[s]; src.playbackRate.value=2**((m-s)/12);
-    g.gain.setValueAtTime(vel,t0); g.gain.setTargetAtTime(0,end,.12); // damper falls when the key is released
+    g.gain.setValueAtTime(vel,t0); g.gain.setTargetAtTime(0,end,S.pedal?.35:.12); // damper falls when the key is released
+    VOICE[m]={g,end:end+1.5};
     src.connect(g); g.connect(master); src.start(t0,.025); src.stop(end+1.5); return; // .025: skip the mp3 encoder's silent start
   }
   const f=440*2**((m-69)/12); // samples still loading (or offline): fall back to the synth
@@ -192,7 +194,7 @@ const ACT={
   setA:()=>{S.loop={a:S.t,b:Math.max(S.t+1,S.loop?.b??S.song.dur)};uiSync();},
   setB:()=>{ if(!S.loop) S.loop={a:startT(),b:S.t}; else if(S.t>S.loop.a) S.loop.b=S.t; uiSync(); },
   clrLoop:()=>{S.loop=null;uiSync();},
-  fing:()=>{S.fing=!S.fing;uiSync();}, full:()=>{S.full=!S.full;uiSync();},
+  fing:()=>{S.fing=!S.fing;uiSync();}, pedal:()=>{S.pedal=!S.pedal;uiSync();}, full:()=>{S.full=!S.full;uiSync();},
   mic:micToggle, stats:()=>show("stats"),
   refing:async()=>{ if(await ask("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
   midi:()=>{ if(inFrame) return toast("这里不能下载文件。导出 MIDI 请用 GitHub Pages 或本地 server.py 打开的版本。"); const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([PV.toMidi(S.song.notes)],{type:"audio/midi"})); a.download=S.song.title+".mid"; a.click(); },
@@ -332,12 +334,12 @@ async function scan(){
 /* ===================== 播放 / 练习状态 ===================== */
 const WIN=.2; // 跟节奏模式：早/晚 0.2 秒内算弹对
 const cv=$("stage"), cx=cv.getContext("2d");
-const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
+const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,pedal:true,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
   store.get("set",{}));
-const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,full:S.full});
+const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,pedal:S.pedal,full:S.full});
 const isUser=n=>S.mode!=="demo"&&(S.hand==="both"||S.hand===n.h);
 const startT=()=>Math.max(0,(S.song.notes[0]?.t??0)-1.5);
-function openSong(s){ finishRec(); S.song=s; s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); S.loop=null; resetFrom(startT()); $("pTitle").textContent=s.title; $("seek").max=s.dur; $("sum").innerHTML=""; show("play"); uiSync(); }
+function openSong(s){ finishRec(); S.song=s; s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); let g0=-1; for(const n of s.notes){ if(n.t-g0<.04) n.t=g0; else g0=n.t; } /* 识别时差一帧的和弦音对齐成同时按下 */ S.loop=null; resetFrom(startT()); $("pTitle").textContent=s.title; $("seek").max=s.dur; $("sum").innerHTML=""; show("play"); uiSync(); }
 function resetFrom(t){
   const ns=S.song.notes; S.t=t; S.playing&&S.mode!=="demo"&&!S.rec&&(S.rec=newRec());
   S.next=ns.findIndex(n=>n.t>=t); if(S.next<0) S.next=ns.length; S.fi=S.next;
@@ -355,7 +357,7 @@ function uiSync(){
   $("playBtn").textContent=S.playing?"⏸ 暂停":"▶ 播放";
   for(const b of document.querySelectorAll("[data-rate]")) b.classList.toggle("on",+b.dataset.rate===S.rate);
   $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R; $("volLV").textContent=Math.round(S.vol.L*100)+"%"; $("volRV").textContent=Math.round(S.vol.R*100)+"%";
-  $("fingBtn").classList.toggle("on",S.fing); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
+  $("fingBtn").classList.toggle("on",S.fing); $("pedalBtn").classList.toggle("on",S.pedal); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
   $("loopV").textContent=S.loop?`循环 ${fmt(S.loop.a)}–${fmt(S.loop.b)}`:"";
   saveSet();
 }
@@ -417,7 +419,9 @@ function step(dt,now){
   if(!S.playing) return;
   const ns=S.song.notes; let nt=S.t+dt*S.rate;
   if(S.mode==="wait"){ const g=S.groups[S.gi]; if(g&&nt>=g.t){ nt=g.t; if(!S.waiting){S.waiting=true;g.from=now;} } } // 只有听到你弹对，时间才继续走
-  while(S.next<ns.length&&ns[S.next].t<=nt){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,n.d/S.rate,S.vol[n.h]); }
+  // 提前 0.12 秒把音排进声卡的时间表，不靠画面刷新来触发，节奏才稳（等我弹时不能越过要等的那一拍）
+  const g=S.mode==="wait"?S.groups[S.gi]:null, ahead=g?Math.min(nt+.12*S.rate,g.t):nt+.12*S.rate;
+  while(S.next<ns.length&&ns[S.next].t<=ahead){ const n=ns[S.next++]; if(!isUser(n)) tone(n.m,Math.max(n.d/S.rate,S.pedal?1.2:0),S.vol[n.h],Math.max(0,(n.t-nt)/S.rate)); }
   if(S.mode==="follow"){ const win=WIN*S.rate; while(S.fi<ns.length&&ns[S.fi].t+win<nt){ const n=ns[S.fi++]; if(isUser(n)&&!n.hit){ n.miss=true; if(S.rec){S.rec.miss++;S.rec.missAt.push(+n.t.toFixed(2));} } } }
   S.t=nt;
   if(MIC.on){ // 麦克风：只确认"该弹的音有没有响"，不判错音（麦克风判错音不可靠）
@@ -547,7 +551,8 @@ function draw(now){
   if($("hud").textContent!==hud) $("hud").textContent=hud;
   if(!$("seek").matches(":active")) $("seek").value=t; const tm=fmt(t); if($("tm").textContent!==tm) $("tm").textContent=tm;
 }
-function frame(now){ const dt=Math.min(.1,(now-S.last)/1000); S.last=now; if(MIC.on) micFrame(now); if(S.song&&!$("play").hidden){ step(dt,now); draw(now); } requestAnimationFrame(frame); }
+function frame(now){ // 时间跟着声卡的时钟走：画面偶尔卡一下，音乐也不会被拖慢
+  const ta=AC?.state==="running"?AC.currentTime:null, dt=Math.min(.5,ta!=null&&S.lastA!=null?ta-S.lastA:(now-S.last)/1000); S.last=now; S.lastA=ta; if(MIC.on) micFrame(now); if(S.song&&!$("play").hidden){ step(dt,now); draw(now); } requestAnimationFrame(frame); }
 requestAnimationFrame(frame);
 
 /* ===================== 麦克风听音（沿用 琴键闯关 的检测） ===================== */
