@@ -35,7 +35,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.1 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.2 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -71,7 +71,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     </div>
     <div id="calInfo" class="muted"></div>
     <div class="row">
-      <span class="muted">识别速度</span><select id="scanRate"><option value="1">1×（最准）</option><option value="2" selected>2×</option><option value="4">4×（快，可能漏音）</option></select>
+      <span class="muted">识别速度</span><select id="scanRate"><option value="1">1×（最准）</option><option value="2" selected>2×</option><option value="4">4×（快，可能漏音）</option><option value="bg">后台模式（慢，切走也继续）</option></select>
       <span class="muted" id="scanMsg">从头识别到结尾。识别时请停在这个页面，切到别的分页会暂停，回来自动继续。</span>
       <button class="pri" data-act="scan" id="scanBtn">开始识别</button><button data-act="scanStop" id="scanStop" hidden>停止并使用已识别部分</button>
     </div>
@@ -121,7 +121,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <div id="toast" hidden></div>
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
-<script src="core.js?v=1.1"></script>
+<script src="core.js?v=1.2"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -265,6 +265,7 @@ function drawCal(){
 for(const [id,k] of [["cTop","top"],["cLine","lineY"],["cX0","x0"],["cX1","x1"],["cLo","lo"],["cHi","hi"],["cV","vMin"]])
   $(id).oninput=e=>{ CAL[k]=+e.target.value; if(CAL.hi<=CAL.lo) CAL.hi=Math.min(108,CAL.lo+12); drawCal(); };
 
+const BG_STEP=1/30; // 后台模式每秒读 30 帧
 async function scan(){
   if(!CAL.w) return;
   const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=1;
@@ -272,8 +273,17 @@ async function scan(){
   const times=[], frames=[], start=0; let last=-1;
   SCAN={running:true,stop:false};
   if(V.currentTime>0){ V.currentTime=0; await new Promise(r=>V.addEventListener("seeked",r,{once:true})); } $("scanBtn").hidden=true; $("scanStop").hidden=false;
-  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); times.push(t); frames.push(sampleRow(sx.getImageData(0,0,CAL.w,1).data,keys)); $("scanBar").style.width=(100*(t-start)/(V.duration-start||1))+"%"; };
-  V.muted=true; V.playbackRate=+$("scanRate").value;
+  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); times.push(t); frames.push(sampleRow(sx.getImageData(0,0,CAL.w,1).data,keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
+  V.muted=true;
+  if($("scanRate").value==="bg"){
+    // 后台模式：一帧一帧跳着读。靠 seeked 事件推进，不靠播放，切到别的分页或被全屏游戏挡住也会继续
+    SCAN.done=()=>{ SCAN.stop=true; };
+    for(let i=0;i*BG_STEP<V.duration&&!SCAN.stop;i++){
+      V.currentTime=i*BG_STEP;
+      await new Promise(r=>{ const to=setTimeout(r,5000); V.addEventListener("seeked",()=>{clearTimeout(to);r();},{once:true}); });
+      grab(V.currentTime);
+    }
+  } else { V.playbackRate=+$("scanRate").value;
   await new Promise(res=>{
     SCAN.done=()=>{ SCAN.stop=true; V.pause(); res(); }; V.onended=SCAN.done;
     // Chrome pauses a muted video in a background tab: pause with it, resume when the page is visible again
@@ -282,7 +292,8 @@ async function scan(){
     if(V.requestVideoFrameCallback){ const cb=(now,meta)=>{ grab(meta.mediaTime); if(!V.ended&&!SCAN.stop) V.requestVideoFrameCallback(cb); }; V.requestVideoFrameCallback(cb); }
     else { const f=()=>{ grab(V.currentTime); if(!V.ended&&!SCAN.stop) requestAnimationFrame(f); }; requestAnimationFrame(f); }
     V.play().catch(e=>{ toast("视频无法播放："+e.message); SCAN.done(); });
-  });
+  }); }
+  document.title="落键练琴";
   V.onended=V.onpause=null; document.removeEventListener("visibilitychange",SCAN.vis); V.playbackRate=1; SCAN.running=false; $("scanBtn").hidden=false; $("scanStop").hidden=true;
   const notes=PV.extractNotes(times,frames,km);
   if(!notes.length) return toast("没识别到音符：把黄色检测线放在音符经过的地方（键盘上方一点），或调低亮度阈值再试。");
