@@ -54,12 +54,15 @@ function probeHue(px, vMin = .4, sMin = .25) {
 
 // times[i] = video time of frame i; frames[i][k] = hue at key k or -1. A run of lit frames on one key = one note.
 // A jump of more than maxGap seconds between frames (browser skipped frames) ends every run, so no note is stretched across it.
-function extractNotes(times, frames, keyMs, maxGap = .25) {
+// upper (optional): the same samples from a line a little higher up. A falling bar lights that line first; a title,
+// watermark or glow that sits still lights both at once, so a note with no earlier light above it is dropped.
+function extractNotes(times, frames, keyMs, maxGap = .25, upper = null) {
   const notes = [], N = times.length;
   for (let k = 0; k < keyMs.length; k++) {
     let s = -1, hs = [];
+    const fell = k2 => { for (let j = s - 1; j >= 0 && times[s] - times[j] <= 1; j--) if (upper[j][k2] >= 0) return true; return false; };
     const close = (i, end = i < N ? times[i] : times[N - 1] + .03) => {
-      notes.push({m: keyMs[k], t: +times[s].toFixed(3), d: +Math.max(.05, end - times[s]).toFixed(3), hue: Math.round(circMean(hs))});
+      if (!upper || fell(k)) notes.push({m: keyMs[k], t: +times[s].toFixed(3), d: +Math.max(.05, end - times[s]).toFixed(3), hue: Math.round(circMean(hs))});
       s = -1; hs = [];
     };
     for (let i = 0; i < N; i++) {

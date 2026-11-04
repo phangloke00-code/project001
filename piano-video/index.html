@@ -35,7 +35,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.2 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v1.3 · 11-04</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -53,7 +53,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <section id="cal" hidden>
   <div class="card">
     <h2>对齐键盘 <span id="calTitle" class="muted"></span></h2>
-    <p class="muted" style="margin:0 0 8px">已自动找键盘。检查：<b style="color:#4fd1ff">蓝线</b>在键盘上沿，<b style="color:#ffd84a">黄线</b>是检测线（在键盘上方一点点），每个键上的小点要对准琴键，画面上的 C 标签和视频里的一致。点亮的小点 = 这一帧识别到的音符。</p>
+    <p class="muted" style="margin:0 0 8px">已自动找键盘。检查：<b style="color:#4fd1ff">蓝线</b>在键盘上沿，<b style="color:#ffd84a">黄线</b>是检测线（在键盘上方一点点，上面那条淡黄线用来排除视频里静止的标题和水印），每个键上的小点要对准琴键，画面上的 C 标签和视频里的一致。点亮的小点 = 这一帧识别到的音符。</p>
     <canvas id="calCv"></canvas>
     <div class="row"><span class="muted">画面</span><input id="calSeek" type="range" min="0" step="0.1" value="0"><span id="calTime" class="mono muted"></span></div>
     <div class="row">
@@ -121,7 +121,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <div id="toast" hidden></div>
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
-<script src="core.js?v=1.2"></script>
+<script src="core.js?v=1.3"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -227,12 +227,18 @@ V.onseeked=()=>{ if(!SCAN.running) drawCal(); };
 $("calSeek").oninput=e=>{V.currentTime=+e.target.value;};
 const lum=(d,i)=>.299*d[i]+.587*d[i+1]+.114*d[i+2];
 function rowLuma(y){ const w=CAL.w, o=Math.max(0,Math.min(CAL.h-1,Math.round(y)))*w*4, out=new Array(w); for(let x=0;x<w;x++) out[x]=lum(frameData,o+x*4); return out; }
+// 辅助线：检测线上方一点。真音符先经过这里再到检测线，静止的标题/水印两条线同时亮，会被丢掉
+const upperY=()=>Math.max(0,CAL.lineY-Math.max(8,Math.round(CAL.h*.05)));
 const blackRowY=()=>CAL.top+(CAL.h-CAL.top)*.3;
 function autoDetect(){
   const {w,h}=CAL, rows=[];
   for(let y=0;y<h;y++){ let s=0; for(let x=0;x<w;x+=3) s+=lum(frameData,(y*w+x)*4); rows.push(s/Math.ceil(w/3)); }
-  let best=-1e9, by=Math.round(h*.8);
-  for(let y=Math.round(h*.4);y<h-10;y++){ let a=0,b=0; for(let k=1;k<=8;k++){a+=rows[y-k];b+=rows[y+k-1];} if(b-a>best){best=b-a;by=y;} } // dark falling area -> bright white keys
+  // dark falling area -> bright keys. Take the FIRST strong jump from the top: some keyboards get brighter again
+  // below the black keys, and that lower jump can be the biggest one
+  const y0=Math.round(h*.4), jump=[];
+  for(let y=y0;y<h-10;y++){ let a=0,b=0; for(let k=1;k<=8;k++){a+=rows[y-k];b+=rows[y+k-1];} jump.push(b-a); }
+  const mx=Math.max(...jump); let i=jump.findIndex(j=>j>=.6*mx); for(let k=i;k<i+8&&k<jump.length;k++) if(jump[k]>jump[i]) i=k;
+  const by=y0+i;
   CAL.top=by; CAL.lineY=Math.max(0,by-Math.max(6,Math.round(h*.02))); // clear of the colored line many videos draw on top of the keyboard
   const lw=rowLuma(by+(h-by)*.85); let x0=0,x1=w; while(x0<w-1&&lw[x0]<140)x0++; while(x1>x0+1&&lw[x1-1]<140)x1--;
   CAL.x0=x0; CAL.x1=x1;
@@ -250,7 +256,7 @@ function drawCal(){
   $("calTime").textContent=fmt(V.currentTime)+" / "+fmt(V.duration);
   const keys=calKeys(), y=Math.round(CAL.lineY), hues=sampleRow(frameData.subarray(y*CAL.w*4,(y+1)*CAL.w*4),keys);
   const L=(yy,c)=>{cctx.fillStyle=c;cctx.fillRect(0,yy-1,CAL.w,2);};
-  L(CAL.top,"#4fd1ff"); L(y,"#ffd84a");
+  L(CAL.top,"#4fd1ff"); L(y,"#ffd84a"); cctx.globalAlpha=.5; L(upperY(),"#ffd84a"); cctx.globalAlpha=1;
   cctx.font="11px sans-serif"; cctx.textAlign="center"; let lit=0;
   keys.forEach((k,i)=>{
     const on=hues[i]>=0; lit+=on;
@@ -268,12 +274,12 @@ for(const [id,k] of [["cTop","top"],["cLine","lineY"],["cX0","x0"],["cX1","x1"],
 const BG_STEP=1/30; // 后台模式每秒读 30 帧
 async function scan(){
   if(!CAL.w) return;
-  const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=1;
-  const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, sh=Math.max(1,1/CAL.scale);
+  const keys=calKeys(), km=keys.map(k=>k.m), sc=document.createElement("canvas"); sc.width=CAL.w; sc.height=2;
+  const sx=sc.getContext("2d",{willReadFrequently:true}), srcY=CAL.lineY/CAL.scale, upY=upperY()/CAL.scale, sh=Math.max(1,1/CAL.scale), up=[];
   const times=[], frames=[], start=0; let last=-1;
   SCAN={running:true,stop:false};
   if(V.currentTime>0){ V.currentTime=0; await new Promise(r=>V.addEventListener("seeked",r,{once:true})); } $("scanBtn").hidden=true; $("scanStop").hidden=false;
-  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); times.push(t); frames.push(sampleRow(sx.getImageData(0,0,CAL.w,1).data,keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
+  const grab=t=>{ if(t<=last) return; last=t; sx.drawImage(V,0,srcY,V.videoWidth,sh,0,0,CAL.w,1); sx.drawImage(V,0,upY,V.videoWidth,sh,0,1,CAL.w,1); const d=sx.getImageData(0,0,CAL.w,2).data; times.push(t); frames.push(sampleRow(d,keys)); up.push(sampleRow(d.subarray(CAL.w*4),keys)); const pc=Math.round(100*(t-start)/(V.duration-start||1)); $("scanBar").style.width=pc+"%"; document.title=`识别 ${pc}% · 落键练琴`; };
   V.muted=true;
   if($("scanRate").value==="bg"){
     // 后台模式：一帧一帧跳着读。靠 seeked 事件推进，不靠播放，切到别的分页或被全屏游戏挡住也会继续
@@ -295,7 +301,7 @@ async function scan(){
   }); }
   document.title="落键练琴";
   V.onended=V.onpause=null; document.removeEventListener("visibilitychange",SCAN.vis); V.playbackRate=1; SCAN.running=false; $("scanBtn").hidden=false; $("scanStop").hidden=true;
-  const notes=PV.extractNotes(times,frames,km);
+  const notes=PV.extractNotes(times,frames,km,.25,up);
   if(!notes.length) return toast("没识别到音符：把黄色检测线放在音符经过的地方（键盘上方一点），或调低亮度阈值再试。");
   const fps=times.length/Math.max(.1,last-start);
   if(fps<18) toast(`识别时每秒只读到 ${fps.toFixed(0)} 帧，快速音符可能漏掉，建议用 1× 重新识别。`);
