@@ -25,6 +25,8 @@ const times = [0, .1, .2, .3, .4, .5], G = 90, R = 355;
 const frames = [[G, -1], [G, R], [G, -1], [-1, -1], [G, -1], [-1, -1]];
 const notes = PV.extractNotes(times, frames, [48, 72]);
 assert.deepStrictEqual(notes.map(n => [n.m, n.t, n.d]), [[48, 0, .3], [72, .1, .1], [48, .4, .1]]);
+// a 5-second hole in the frame times must not join the lit frames on either side into one long note
+assert.deepStrictEqual(PV.extractNotes([0, .1, 5.1, 5.2], [[G], [G], [G], [-1]], [60]).map(n => [n.t, n.d]), [[0, .13], [5.1, .1]]);
 const cols = PV.assignHands(notes);
 assert.deepStrictEqual(notes.map(n => n.h), ["L", "R", "L"]);
 assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
