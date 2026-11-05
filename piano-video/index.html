@@ -24,11 +24,24 @@ main>section{padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-l
 .song{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.song b{flex:1;min-width:140px}
 canvas{display:block;max-width:100%}
 #calCv{width:100%;border-radius:8px;background:#000}
-#stage{width:100%;height:min(64vh,680px);border-radius:10px;touch-action:none;background:#2c2e33}
-/* 手机横屏 / 全屏：画面尽量大，标题栏收起 */
-@media (orientation:landscape) and (max-height:520px){ header,#play>.row:first-child{display:none} #stage{height:88vh} }
-:fullscreen #stage{height:84vh} :fullscreen header{display:none}
-#hud{min-height:22px} #sum{margin-top:8px}
+/* 练习画面：固定一屏，画面占满，下面一条小 bar，其它设置收在 ☰ 里 */
+body.pv-play header{display:none} body.pv-play{overflow:hidden}
+main>section#play{display:flex;flex-direction:column;height:100vh;height:100dvh;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) 0 env(safe-area-inset-left,0px);max-width:none}
+#stageBox{position:relative;flex:1;min-height:0}
+#stage{width:100%;height:100%;touch-action:none;background:#2c2e33}
+#ov{position:absolute;left:8px;top:6px;right:8px;pointer-events:none;font-size:12px;color:#fffc;text-shadow:0 1px 2px #000}
+#ov b{font-size:13px} #micHud{color:var(--acc)}
+#sum{position:absolute;left:8px;right:8px;bottom:8px;max-height:70%;overflow:auto}#sum .card{margin:0;background:#262930f2}
+#pbar{display:flex;gap:6px;align-items:center;padding:6px max(8px,env(safe-area-inset-right,0px)) max(6px,env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));background:var(--bg)}
+#pbar #tm{font-size:12px;min-width:34px}
+button.ic{min-width:40px;min-height:40px;padding:0;font-size:18px;line-height:1}
+#panel{position:fixed;z-index:6;left:8px;right:8px;margin:0 auto;max-width:520px;bottom:calc(58px + env(safe-area-inset-bottom,0px));max-height:calc(100dvh - 90px);overflow:auto;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 8px 30px #000a}
+.grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px}
+.grp>span:first-child{color:var(--muted);min-width:44px;font-size:13px} .grp input[type=range]{min-width:0}
+.grp input[type=number]{width:52px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:4px 0 10px}
+.tiles button{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;padding:6px 2px}.tiles i{font-style:normal;font-size:18px;line-height:1.2}
+details{font-size:12px}summary{cursor:pointer}
 .bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--acc);width:0}
 table{border-collapse:collapse;width:100%;font-size:13px}td,th{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:500}
 .tl{display:flex;height:34px;gap:1px;align-items:flex-end;background:var(--bg);border-radius:6px;padding:2px;overflow:hidden}.tl>i{flex:1;background:var(--bad);min-height:1px;border-radius:2px 2px 0 0}
@@ -38,7 +51,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.9 · 11-05</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.0 · 11-05</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -86,41 +99,32 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 
 <!-- ================= 播放 / 练习 ================= -->
 <section id="play" hidden>
-  <div class="row"><h2 id="pTitle" style="margin:0;flex:1"></h2><button data-act="stats">📊 分析</button></div>
-  <canvas id="stage"></canvas>
-  <div id="hud" class="mono muted"></div>
-  <div class="muted" style="font-size:12px">画面上：上下拖 = 拖进度 · 点一下 = 播放/暂停 · 双击左边/右边 = 后退/快进 5 秒</div>
-  <div class="row">
-    <button class="pri" data-act="toggle" id="playBtn" style="min-width:76px">▶ 播放</button><button data-act="restart" title="回到开头">⏮</button>
+  <div id="stageBox"><canvas id="stage"></canvas>
+    <div id="ov"><b id="pTitle"></b><div id="hud" class="mono"></div><div id="micHud" class="mono"></div></div>
+    <div id="sum"></div></div>
+  <div id="pbar">
+    <button class="ic" data-go="lib" aria-label="曲库">‹</button>
+    <button class="pri ic" data-act="toggle" id="playBtn" aria-label="播放/暂停">▶</button><button class="ic" data-act="restart" aria-label="回到开头">⏮</button>
     <input id="seek" type="range" min="0" step="0.05"><span id="tm" class="mono muted"></span>
+    <button class="ic" data-act="menu" id="menuBtn" aria-label="设置">☰</button>
   </div>
-  <div class="row">
-    <span class="muted">速度</span><span class="seg" id="rateSeg"><button data-rate="-">－</button><button data-rate=".5">50%</button><button data-rate=".75">75%</button><button data-rate="1">100%</button><button data-rate="+">＋</button></span>
+  <div id="panel" hidden>
+    <div class="grp"><span>模式</span><span class="seg" id="modeSeg"><button data-mode="demo">看</button><button data-mode="wait">等我弹</button><button data-mode="follow">跟节奏</button></span></div>
+    <div class="grp"><span>手</span><span class="seg" id="handSeg"><button data-hand="L">左</button><button data-hand="R">右</button><button data-hand="both">双</button></span></div>
+    <div class="grp"><span>速度 <b id="rateV" class="mono">100%</b></span><span class="seg" id="rateSeg"><button data-rate="-">－</button><button data-rate=".5">50</button><button data-rate=".75">75</button><button data-rate="1">100</button><button data-rate="+">＋</button></span><input id="rate" type="range" min="0.25" max="1.5" step="0.05" value="1" hidden></div>
+    <div class="grp"><span>音量</span><span class="muted">左</span><input id="volL" type="range" min="0" max="1" step="0.05" aria-label="左手音量"><b id="volLV" hidden></b><span class="muted">右</span><input id="volR" type="range" min="0" max="1" step="0.05" aria-label="右手音量"><b id="volRV" hidden></b><button id="volReset" class="ic" aria-label="音量恢复 100%">↺</button></div>
+    <div class="grp"><span>循环</span><button data-act="setA">A</button><button data-act="setB">B</button><input id="barA" type="number" min="1" value="1"><span class="muted">–</span><input id="barB" type="number" min="1" value="4"><button data-act="barLoop" class="ic" aria-label="循环这几小节">🔁</button><button data-act="clrLoop" class="ic" aria-label="取消循环">✕</button><span id="loopV" class="muted"></span></div>
+    <div class="tiles">
+      <button data-act="names" id="namesBtn"><i>C</i>音名</button><button data-act="fing" id="fingBtn"><i>①</i>指法</button>
+      <button data-act="pedal" id="pedalBtn"><i>🦶</i>踏板</button><button data-act="metro" id="metroBtn"><i>🥁</i>节拍器</button>
+      <button data-act="countIn" id="countInBtn"><i>4</i>预备拍</button><button data-act="autoUp" id="autoUpBtn"><i>⏫</i>练熟加速</button>
+      <button data-act="full" id="fullBtn"><i>🎹</i>全键盘</button><button data-act="mic" id="micBtn"><i>🎤</i>麦克风</button>
+      <button data-act="fs" id="fsBtn"><i>⛶</i>全屏</button><button data-act="stats"><i>📊</i>分析</button>
+      <button data-act="refing"><i>✋</i>重算指法</button><button data-act="midi"><i>⬇</i>MIDI</button>
+    </div>
+    <div class="grp"><span>点音符</span><select id="editSel"><option value="f">改指法</option><option value="h">换手</option></select><span class="muted" id="midiV"></span></div>
+    <details class="muted"><summary>怎么用</summary>画面：上下拖 = 进度 · 点 = 播放/暂停 · 双击左/右 = ∓5 秒 · 暂停时点音符 = 改指法/换手<br>弹：MIDI 键盘 · 麦克风 · 电脑键盘 <kbd>A</kbd><kbd>W</kbd><kbd>S</kbd>… = C C# D…（<kbd>Z</kbd>/<kbd>X</kbd> 换八度，空格 播放）· 点琴键</details>
   </div>
-  <div class="row">
-    <span class="muted">模式</span><span class="seg" id="modeSeg"><button data-mode="demo">看演示</button><button data-mode="wait">等我弹</button><button data-mode="follow">跟节奏</button></span>
-    <span class="muted">练</span><span class="seg" id="handSeg"><button data-hand="L">左手</button><button data-hand="R">右手</button><button data-hand="both">双手</button></span>
-  </div>
-  <div class="row">
-    <label class="lbl"><span>速度 <b id="rateV" class="mono">100%</b></span><input id="rate" type="range" min="0.25" max="1.5" step="0.05" value="1"></label>
-    <label class="lbl"><span>左手音量 <b id="volLV" class="mono">100%</b></span><input id="volL" type="range" min="0" max="1" step="0.05"></label>
-    <label class="lbl"><span>右手音量 <b id="volRV" class="mono">100%</b></span><input id="volR" type="range" min="0" max="1" step="0.05"></label>
-    <button id="volReset" title="左右手音量都恢复 100%">↺ 默认音量</button>
-  </div>
-  <div class="row">
-    <button data-act="setA">设 A</button><button data-act="setB">设 B</button><button data-act="clrLoop">取消循环</button><span id="loopV" class="muted"></span>
-    <span class="muted">小节</span><input id="barA" type="number" min="1" value="1" style="width:58px"><span class="muted">到</span><input id="barB" type="number" min="1" value="4" style="width:58px"><button data-act="barLoop">🔁 循环这几小节</button>
-    <button data-act="autoUp" id="autoUpBtn" title="循环练习时，一遍准确率达到 90% 就自动加快 5%，直到原速">练熟自动加速</button>
-    <button data-act="metro" id="metroBtn" title="按歌曲的拍子打拍">🥁 节拍器</button><button data-act="countIn" id="countInBtn" title="练习模式开始前先数 4 拍">预备拍</button><button data-act="pedal" id="pedalBtn" title="像原曲一样踩着延音踏板：短音也会自然地响一会儿">延音踏板</button><button data-act="fing" id="fingBtn">指法号</button><button data-act="full" id="fullBtn">全键盘</button>
-    <button data-act="fs" id="fsBtn" title="全屏，手机会转成横屏">⛶ 全屏</button><button data-act="mic" id="micBtn">🎤 麦克风</button><span id="midiV" class="muted"></span>
-  </div>
-  <div class="row muted">
-    暂停时点音符：<select id="editSel"><option value="f">改指法 1→5</option><option value="h">换左右手</option></select>
-    <button data-act="refing">重新自动指法</button><button data-act="midi">导出 MIDI</button>
-  </div>
-  <div id="micHud" class="mono muted"></div>
-  <div id="sum"></div>
-  <p class="muted" style="font-size:12px">输入方式：USB/蓝牙 MIDI 键盘（最准）· 麦克风听真钢琴 · 电脑键盘 <kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd>… = C D E…（<kbd>Z</kbd>/<kbd>X</kbd> 换八度，<kbd>[</kbd>/<kbd>]</kbd> 减慢/加快，空格 播放/暂停）· 点画面下方的琴键。</p>
 </section>
 
 <!-- ================= 分析 ================= -->
@@ -134,7 +138,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=2.9"></script>
+<script src="core.js?v=3.0"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -148,7 +152,7 @@ const store={get(k,d){try{const v=localStorage.getItem("pv-"+k);return v?JSON.pa
   set(k,v){try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}}};
 let songs=store.get("songs",[]);
 const saveSongs=()=>store.set("songs",songs.map(s=>({...s,notes:s.notes.map(({hit,miss,...n})=>n)})));
-function show(id){ if(id!=="play"&&id!=="stats") pause(); for(const s of document.querySelectorAll("main>section")) s.hidden=s.id!==id; if(id==="lib") renderLib(); if(id==="stats") renderStats(); scrollTo(0,0); }
+function show(id){ if(id!=="play"&&id!=="stats") pause(); for(const s of document.querySelectorAll("main>section")) s.hidden=s.id!==id; document.body.classList.toggle("pv-play",id==="play"); $("panel").hidden=true; if(id==="lib") renderLib(); if(id==="stats") renderStats(); scrollTo(0,0); }
 
 /* ===================== 声音 ===================== */
 let AC,master;
@@ -209,6 +213,7 @@ const ACT={
   setA:()=>{S.loop={a:S.t,b:Math.max(S.t+1,S.loop?.b??S.song.dur)};uiSync();},
   setB:()=>{ if(!S.loop) S.loop={a:startT(),b:S.t}; else if(S.t>S.loop.a) S.loop.b=S.t; uiSync(); },
   clrLoop:()=>{S.loop=null;uiSync();},
+  menu:()=>{$("panel").hidden=!$("panel").hidden;}, names:()=>{S.names=!S.names;uiSync();},
   fing:()=>{S.fing=!S.fing;uiSync();}, pedal:()=>{S.pedal=!S.pedal;uiSync();}, metro:()=>{S.metro=!S.metro;S.nextBeat=null;uiSync();}, countIn:()=>{S.countIn=!S.countIn;uiSync();}, autoUp:()=>{S.autoUp=!S.autoUp;uiSync();},
   fs:()=>{ const el=document.documentElement, req=el.requestFullscreen||el.webkitRequestFullscreen;
     if(document.fullscreenElement||document.webkitFullscreenElement) return (document.exitFullscreen||document.webkitExitFullscreen).call(document);
@@ -397,9 +402,9 @@ async function scan(){
 /* ===================== 播放 / 练习状态 ===================== */
 const WIN=.2; // 跟节奏模式：早/晚 0.2 秒内算弹对
 const cv=$("stage"), cx=cv.getContext("2d");
-const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,pedal:true,metro:false,countIn:true,autoUp:false,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
+const S=Object.assign({song:null,t:0,playing:false,rate:1,mode:"demo",hand:"R",vol:{L:1,R:1},fing:true,names:false,pedal:true,metro:false,countIn:true,autoUp:false,full:false,loop:null,next:0,fi:0,groups:[],gi:0,waiting:false,rec:null,user:new Map(),fx:new Map(),last:0,L:null},
   store.get("set",{}));
-const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,pedal:S.pedal,metro:S.metro,countIn:S.countIn,autoUp:S.autoUp,full:S.full});
+const saveSet=()=>store.set("set",{rate:S.rate,mode:S.mode,hand:S.hand,vol:S.vol,fing:S.fing,names:S.names,pedal:S.pedal,metro:S.metro,countIn:S.countIn,autoUp:S.autoUp,full:S.full});
 const isUser=n=>S.mode!=="demo"&&(S.hand==="both"||S.hand===n.h);
 const startT=()=>Math.max(0,(S.song.notes[0]?.t??0)-1.5);
 function openSong(s){ finishRec(); S.song=s; if(s.beat===undefined){ s.beat=PV.beatGrid(s.notes); saveSongs(); } s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); let g0=-1; for(const n of s.notes){ if(n.t-g0<.04) n.t=g0; else g0=n.t; } /* 识别时差一帧的和弦音对齐成同时按下 */ S.loop=null; resetFrom(startT()); $("pTitle").textContent=s.title; $("seek").max=s.dur; $("sum").innerHTML=""; show("play"); uiSync(); }
@@ -412,17 +417,17 @@ function resetFrom(t){
 }
 function play(){ if(!S.song) return; ac(); if(S.t>=S.song.dur+.9) resetFrom(startT()); if(S.mode!=="demo"&&!S.rec) S.rec=newRec();
   if(S.countIn&&S.mode!=="demo"&&S.song.beat){ const p=S.song.beat.p/S.rate; for(let i=0;i<4;i++) click(.05+i*p,i===0); S.hold=AC.currentTime+.05+4*p; } // 先数 4 拍再开始
-  S.playing=true; uiSync(); }
+  S.playing=true; $("sum").innerHTML=""; uiSync(); }
 function pause(){ if(!S.playing) return; S.playing=false; uiSync(); }
 function setMode(m){ finishRec(); S.mode=m; resetFrom(S.t); uiSync(); }
 function setHand(h){ finishRec(); S.hand=h; resetFrom(S.t); uiSync(); }
 function uiSync(){
   for(const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("on",b.dataset.mode===S.mode);
   for(const b of document.querySelectorAll("[data-hand]")) b.classList.toggle("on",b.dataset.hand===S.hand);
-  $("playBtn").textContent=S.playing?"⏸ 暂停":"▶ 播放";
+  $("playBtn").textContent=S.playing?"⏸":"▶";
   for(const b of document.querySelectorAll("[data-rate]")) b.classList.toggle("on",+b.dataset.rate===S.rate);
   $("rate").value=S.rate; $("rateV").textContent=Math.round(S.rate*100)+"%"; $("volL").value=S.vol.L; $("volR").value=S.vol.R; $("volLV").textContent=Math.round(S.vol.L*100)+"%"; $("volRV").textContent=Math.round(S.vol.R*100)+"%";
-  $("fingBtn").classList.toggle("on",S.fing); $("pedalBtn").classList.toggle("on",S.pedal); $("metroBtn").classList.toggle("on",S.metro); $("countInBtn").classList.toggle("on",S.countIn); $("autoUpBtn").classList.toggle("on",S.autoUp); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
+  $("fingBtn").classList.toggle("on",S.fing); $("namesBtn").classList.toggle("on",S.names); $("pedalBtn").classList.toggle("on",S.pedal); $("metroBtn").classList.toggle("on",S.metro); $("countInBtn").classList.toggle("on",S.countIn); $("autoUpBtn").classList.toggle("on",S.autoUp); $("fullBtn").classList.toggle("on",S.full); $("micBtn").classList.toggle("on",MIC.on);
   $("loopV").textContent=S.loop?`循环 ${fmt(S.loop.a)}–${fmt(S.loop.b)}`:"";
   saveSet();
 }
@@ -431,6 +436,9 @@ $("rate").oninput=e=>{S.rate=+e.target.value;uiSync();};
 function setRate(v){ S.rate=Math.min(1.5,Math.max(.25,+(v==="+"?S.rate+.05:v==="-"?S.rate-.05:+v).toFixed(2))); uiSync(); toast("速度 "+Math.round(S.rate*100)+"%"); }
 $("volL").oninput=e=>{S.vol.L=+e.target.value;saveSet();uiSync();}; $("volR").oninput=e=>{S.vol.R=+e.target.value;saveSet();uiSync();};
 $("volReset").onclick=()=>{S.vol={L:1,R:1};saveSet();uiSync();};
+// ☰ 面板：点面板外面任何地方就收起（这一下不会同时触发播放/暂停）
+document.addEventListener("pointerdown",e=>{ const p=$("panel"); if(p.hidden||p.contains(e.target)||$("menuBtn").contains(e.target)) return; p.hidden=true; e.stopPropagation(); e.preventDefault(); },true);
+$("sum").onclick=e=>{ if(!e.target.closest("button")) $("sum").innerHTML=""; };
 $("seek").oninput=e=>{ finishRec(); resetFrom(+e.target.value); };
 
 /* ===================== 记录 ===================== */
@@ -599,7 +607,7 @@ function draw(now){
       cx.fillStyle="#f5b84299"; cx.fillRect(W-5*dpr,y0,5*dpr,Math.max(0,y1-y0-2*dpr));
       if(a>=t){ cx.fillStyle="#f5b842"; cx.fillText("踩",W-7*dpr,y1-dpr); } } }
   // 下落的音符
-  const rects=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.min(ww*.7,15*dpr))}px sans-serif`;
+  const rects=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.min(ww*(S.names?.45:.7),15*dpr))}px sans-serif`;
   for(const n of S.song.notes){
     if(n.t>t+LA) break; if(n.t+n.d<t-.05) continue; const k=byM[n.m]; if(!k) continue;
     if(n.t<=t&&n.t+n.d>t) active.set(n.m,n);
@@ -607,7 +615,8 @@ function draw(now){
     const w=k.black?k.w*.95:k.w*.84, x0=k.x-w/2, dim=dimOther&&n.h!==S.hand;
     cx.fillStyle=col(n.h,k.black?44:64,(dim?.22:n.hit?.55:1)*(.15+.85*S.vol[n.h])); rr(x0,y0,w,y1-y0,4*dpr); cx.fill(); // 音量调小，那只手的音符也跟着变淡
     if(n.miss){ cx.strokeStyle="#ff4d4d"; cx.lineWidth=2*dpr; cx.stroke(); }
-    if(S.fing&&n.f&&!dim&&y1-y0>14*dpr){ cx.fillStyle=k.black?"#fff":"#1b1b1b"; cx.fillText(n.f,k.x,y1-Math.min(10*dpr,(y1-y0)/2)); }
+    const lab=S.names?PV.NAMES[n.m%12]:S.fing&&n.f; // 音名开着：音符上写 C–B，指法号留在键盘上
+    if(lab&&!dim&&y1-y0>14*dpr){ cx.fillStyle=k.black?"#fff":"#1b1b1b"; cx.fillText(lab,k.x,y1-Math.min(10*dpr,(y1-y0)/2)); }
     rects.push([x0,y0,w,y1-y0,n]);
   }
   // 等待中的目标音
