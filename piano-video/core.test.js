@@ -30,6 +30,15 @@ assert.strictEqual(lit(px, 70), -1);
   const lil = bg(rowOf(() => {})); for (let x = Math.round(K(72).x - 9); x < K(72).x + 9; x++) lil.set([163, 133, 152, 255], x * 4);
   for (let x = Math.round(K(60).x - 9); x < K(60).x + 9; x++) lil.set([250, 250, 250, 255], x * 4);
   assert.ok(PV.hueDist(lit(lil, 72), 322) < 10); assert.strictEqual(lit(lil, 71), -1); assert.strictEqual(lit(lil, 60), -1); assert.strictEqual(lit(bg(rowOf(() => {})), 72), -1); }
+// lineBg: a lilac bar dimmer than vMin (v .38 on v .25) lights its key against the background; the light a hit throws over
+// a cyan background (same hue, less saturated) does not
+{ const fill = rgb => { const d = new Uint8ClampedArray(1040 * 4); for (let x = 0; x < 1040; x++) d.set([...rgb, 255], x * 4); return d; };
+  const bar = (d, m, rgb) => { for (let x = Math.round(K(m).x - 9); x < K(m).x + 9; x++) d.set([...rgb, 255], x * 4); return d; };
+  const rows = Array.from({length: 40}, () => fill([64, 56, 61])); rows[20] = bar(fill([64, 56, 61]), 72, [97, 77, 95]);
+  const bg = PV.lineBg(rows), at = (d, b, m) => PV.sampleKeys(d, 1040, keys, .4, .25, null, b)[keys.indexOf(K(m))];
+  assert.strictEqual(at(rows[20], null, 72), -1); assert.ok(PV.hueDist(at(rows[20], bg[20], 72), 306) < 15); assert.strictEqual(at(rows[3], bg[3], 72), -1);
+  const cy = Array.from({length: 40}, () => fill([45, 62, 69])); cy[20] = bar(fill([45, 62, 69]), 72, [80, 95, 100]);
+  assert.strictEqual(at(cy[20], PV.lineBg(cy)[20], 72), -1); }
 // A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
 assert.strictEqual(lit(px, 70), -1);

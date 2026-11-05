@@ -55,12 +55,18 @@ function circMean(hs) {
 // pale omitted (auto): on a dark row (median v < .5) a greyish-tinted pixel (sat >= .1) well above the background
 // (v >= median + .2) counts too: see-through pastel bars (Are You Lost: lilac bars sat .18 v .64 on brown-grey sat .15 v .38).
 // White (sat < .1) stays out: sparks, glare and text.
-function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null) {
-  const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4; return hsv(d[i], d[i + 1], d[i + 2]); };
+// bg (optional): this row's background (see lineBg). On a dark background a pixel brighter than it and clearly another color
+// counts too (white = sparks, glare: no): see-through bars dimmer than vMin (a Cuppix cover: lilac bars v .30-.40 on brown/black v .2-.33).
+function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null, bg = null) {
+  const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4, p = hsv(d[i], d[i + 1], d[i + 2]);
+    if (bg) { const b = hsv(bg[i], bg[i + 1], bg[i + 2]); // same hue, no more saturated = white light over the background (glow)
+      p.bg = b[2] < .5 && p[1] >= .12 && p[2] > b[2] + .1 && Math.hypot(d[i] - bg[i], d[i + 1] - bg[i + 1], d[i + 2] - bg[i + 2]) >= 40 &&
+        !(hueDist(p[0], b[0]) < 25 && p[1] <= b[1] + .02); }
+    return p; };
   const auto = pale == null;
   if (auto) { const hist = new Uint32Array(256); for (let x = 0; x < width; x++) hist[Math.max(d[x * 4], d[x * 4 + 1], d[x * 4 + 2])]++;
     let med = 0; for (let n = 0; n <= width / 2; med++) n += hist[med]; med = (med - 1) / 255; pale = med < .5 ? Math.max(vMin, med + .2) : 2; }
-  const pl = p => p[1] < sMin, lit = p => p[2] >= vMin && (!pl(p) || p[2] >= pale && (!auto || p[1] >= .1)), ww = keys.find(k => !k.black).w;
+  const pl = p => p[1] < sMin, lit = p => p.bg || p[2] >= vMin && (!pl(p) || p[2] >= pale && (!auto || p[1] >= .1)), ww = keys.find(k => !k.black).w;
   return Int16Array.from(keys, (k, i) => {
     const c = px(k.x); if (!lit(c)) return -1;
     // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
@@ -76,6 +82,7 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null) {
     const len = l + r + 1, wide = len >= .8 * ww, mid = k.x + (r - l) / 2;
     if (rel) { let mx = 0; for (let x = k.x - l; x <= k.x + r; x++) mx = Math.max(mx, px(x)[2]); if (c[2] < .85 * mx) return -1; }
     if (len < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
+    if (c.bg && !(c[2] >= vMin && c[1] >= sMin) && (l >= 2 * ww || r >= 2 * ww)) return -1; // dim + no edge in sight: the background lighting up, not a bar
     // a black key inside a wide stretch is usually just a white bar reaching its center -> not lit. But a white bar plus this
     // black key's bar by the same hand merge into one stretch; black-key bars are drawn darker, so a solidly darker patch
     // (5 px, not just a soft edge) under the black key's center, in a stretch under two keys wide, is the black key's note.
@@ -91,6 +98,22 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null) {
     const nb = [keys[i - 1], keys[i + 1]].find(b => b && b.black !== k.black && Math.abs(mid - b.x) < Math.abs(mid - k.x));
     return !wide && nb ? -1 : hue();
   });
+}
+
+// Background of a detection line, per frame: per pixel, the 25th-percentile color of the frames within ~10 s (sampled every
+// 5th frame). Bars on a dark background only ever make a pixel brighter, and a still title/watermark is background too.
+// Recomputed every 300 frames so a slow fade or a new background picture is followed. rows[i] = RGBA row at frame i.
+function lineBg(rows) {
+  const N = rows.length, out = new Array(N), C = 300, R = 300;
+  for (let c0 = 0; c0 < N; c0 += C) {
+    const from = Math.max(0, c0 + C / 2 - R), to = Math.min(N, c0 + C / 2 + R), idx = [];
+    for (let i = from; i < to; i += 5) idx.push(i);
+    const L = rows[c0].length, bg = new Uint8ClampedArray(L), v = new Uint8Array(idx.length);
+    for (let j = 0; j < L; j++) { if (j % 4 === 3) { bg[j] = 255; continue; }
+      idx.forEach((i, q) => v[q] = rows[i][j]); v.sort(); bg[j] = v[Math.floor(v.length / 4)]; }
+    for (let i = c0; i < Math.min(N, c0 + C); i++) out[i] = bg;
+  }
+  return out;
 }
 
 // times[i] = video time of frame i; frames[i][k] = hue at key k or -1. A run of lit frames on one key = one note.
@@ -461,6 +484,6 @@ function arrange(raw, style = "full") {
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, paleNotes, keyColors, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, lineBg, extractNotes, paleNotes, keyColors, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);
