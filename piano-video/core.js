@@ -236,7 +236,7 @@ function fromMidi(buf) {
   if (u32(0) !== 0x4d546864) throw new Error("不是 MIDI 文件");
   const ntr = u16(10), div = u16(12);
   if (div & 0x8000) throw new Error("不支持 SMPTE 时间格式的 MIDI");
-  let pos = 8 + u32(4); const tempos = [], raw = [];
+  let pos = 8 + u32(4); const tempos = [], raw = [], ped = [];
   for (let tr = 0; tr < ntr && pos < b.length; tr++) {
     const len = u32(pos + 4); let i = pos + 8; const end = i + len; let tick = 0, rs = 0; const on = {};
     const rd = () => { let v = 0, c; do { c = b[i++]; v = v << 7 | c & 127; } while (c & 128 && i < end); return v; };
@@ -247,15 +247,20 @@ function fromMidi(buf) {
       if (st === 0xf0 || st === 0xf7) { i += rd(); continue; }
       rs = st; const hi = st & 0xf0, ch = st & 15, d1 = b[i++], d2 = hi === 0xc0 || hi === 0xd0 ? 0 : b[i++];
       const k = ch * 128 + d1;
-      if (hi === 0x90 && d2 > 0) (on[k] = on[k] || []).push([tick, d2]);
+      if (hi === 0xb0 && d1 === 64) ped.push([tick, d2 >= 64]); // sustain pedal
+      else if (hi === 0x90 && d2 > 0) (on[k] = on[k] || []).push([tick, d2]);
       else if ((hi === 0x80 || hi === 0x90) && on[k] && on[k].length) { const [a, v] = on[k].shift(); raw.push({tr, ch, m: d1, a, v, z: tick}); }
     }
     pos = end;
   }
   tempos.sort((x, y) => x[0] - y[0]); if (!tempos.length || tempos[0][0] > 0) tempos.unshift([0, 500000]);
   const sec = tick => { let s = 0, i = 0; for (; i + 1 < tempos.length && tempos[i + 1][0] <= tick; i++) s += (tempos[i + 1][0] - tempos[i][0]) * tempos[i][1]; return (s + (tick - tempos[i][0]) * tempos[i][1]) / div / 1e6; };
+  ped.sort((x, y) => x[0] - y[0]);
+  const pedRing = z => { let i = -1; while (i + 1 < ped.length && ped[i + 1][0] <= z) i++; if (i < 0 || !ped[i][1]) return 0;
+    const up = ped.find(e => e[0] > z && !e[1]); return +Math.min(3, (up ? sec(up[0]) : sec(z) + 3) - sec(z)).toFixed(1); }; // seconds the pedal keeps it ringing
   const trs = [...new Set(raw.map(n => n.tr))].sort((x, y) => x - y);
   const notes = raw.map(n => ({m: n.m, t: +sec(n.a).toFixed(3), d: +Math.max(.05, sec(n.z) - sec(n.a)).toFixed(3), v: +(n.v / 127).toFixed(2),
+    s: ped.length ? pedRing(n.z) : undefined,
     h: trs.length >= 2 && trs.indexOf(n.tr) < 2 ? (trs.indexOf(n.tr) === 0 ? "R" : "L") : n.m < 60 ? "L" : "R"})); // 1st track = right hand (Synthesia convention)
   return notes.sort((x, y) => x.t - y.t || x.m - y.m);
 }
@@ -314,9 +319,26 @@ function beatGrid(notes) {
   const d = slot.indexOf(Math.max(...slot));
   return {p: +p.toFixed(4), t0: +(t0 + d * p).toFixed(3), bpb: 4, bpm: Math.round(60 / p)};
 }
+// Pedal hints [[down, up], ...] from n.s (seconds a note rings on after release = pedal held).
+// At each onset: if most notes that were ringing only by the pedal stop right there, the player changed pedal (lift + press);
+// if nothing pedaled is ringing any more, the pedal was up.
+function pedalMarks(notes) {
+  const P = notes.filter(n => n.s >= .3), out = []; let cur = null;
+  for (const g of groupByOnset(P)) {
+    const ring = P.filter(n => n.t + n.d <= g.t + .05 && n.t + n.d + n.s > g.t - .1), cut = ring.filter(n => n.t + n.d + n.s < g.t + .3).length;
+    if (!cur || cur[1] < g.t - .1 || ring.length && cut >= .6 * ring.length) { if (cur) cur[1] = Math.min(cur[1], g.t); out.push(cur = [g.t, g.t]); }
+    for (const n of g.notes) cur[1] = Math.max(cur[1], n.t + n.d + n.s);
+  }
+  // also change wherever the left-hand bass moves to a new note (the usual rule for pianists); drop slivers < .4 s
+  let pb = -1; const ch = [];
+  for (const g of groupByOnset(notes.filter(n => n.h === "L"))) { const b = Math.min(...g.notes.map(n => n.m)) % 12; if (b !== pb) ch.push(g.t); pb = b; }
+  const res = [], add = (a, b) => { const p = res[res.length - 1]; if (p && p[1] === a && p[1] - p[0] < .4) p[1] = b; else res.push([a, b]); };
+  for (const [a, b] of out) { let s0 = a; for (const c of ch) if (c > s0 + .5 && c < b - .3) { add(s0, c); s0 = c; } add(s0, b); }
+  return res;
+}
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);
