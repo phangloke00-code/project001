@@ -63,8 +63,10 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
     if (len < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
     // a black key inside a wide stretch is usually just a white bar reaching its center -> not lit. But a white bar plus this
     // black key's bar by the same hand merge into one stretch; black-key bars are drawn darker, so a solidly darker patch
-    // (5 px, not just a soft edge) under the black key's center, in a stretch under two keys wide, is the black key's note
+    // (5 px, not just a soft edge) under the black key's center, in a stretch under two keys wide, is the black key's note.
+    // Its bar spans both sides of its center; a center only a few px inside the stretch is a white bar's darker outline.
     if (k.black && wide) {
+      if (Math.min(l, r) < .2 * ww) return -1;
       const wn = [keys[i - 1], keys[i + 1]].find(w => w && !w.black && w.x >= k.x - l && w.x <= k.x + r), vw = wn && px(wn.x)[2];
       const dark = wn && len < 1.6 * ww && [-2, -1, 0, 1, 2].every(o => { const p = px(k.x + o); return same(p) && p[2] < .85 * vw; });
       return dark ? Math.round(c[0]) : -1;

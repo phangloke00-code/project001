@@ -28,6 +28,9 @@ assert.strictEqual(lit(px, 70), -1);
 // A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
 assert.strictEqual(lit(px, 70), -1);
+// a full-width A4 bar with a darker outline whose left edge reaches just past G#4's center: G#4 not lit (失眠的夜 bar 28)
+px = rowOf(f => { f(K(68).x - 2, K(69).x + 10, [170, 220, 90]); f(K(68).x - 2, K(68).x + 3, [120, 170, 50]); });
+assert.strictEqual(lit(px, 68), -1); assert.ok(lit(px, 69) >= 0);
 // a narrow A#4 bar in the other hand's color next to a B4 bar: both lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 6, K(70).x + 6, [100, 140, 30]); });
 assert.ok(lit(px, 70) >= 0 && lit(px, 71) >= 0);
