@@ -63,7 +63,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.7 · 11-05</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.8 · 11-05</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -175,7 +175,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=3.7"></script>
+<script src="core.js?v=3.8"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -751,7 +751,7 @@ function draw(now){
       cx.fillStyle="#f5b84299"; cx.fillRect(pl?0:W-5*dpr,y0,5*dpr,Math.max(0,y1-y0-2*dpr));
       if(a>=t){ cx.fillStyle="#f5b842"; cx.fillText("踩",pl?7*dpr:W-7*dpr,y1-dpr); } } }
   // 下落的音符
-  const rects=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.min(ww*(S.names?.45:.7),15*dpr))}px sans-serif`;
+  const rects=[], labs=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.max(9*dpr,Math.min(ww*(S.names?.55:.7),15*dpr)))}px sans-serif`;
   for(const n of S.song.notes){
     if(n.t>t+LA) break; if(n.t+n.d<t-.05) continue; const k=byM[n.m]; if(!k) continue;
     if(n.t<=t&&n.t+n.d>t) active.set(n.m,n);
@@ -760,9 +760,12 @@ function draw(now){
     cx.fillStyle=col(n.h,k.black?44:64,(dim?.22:n.hit?.55:1)*(.15+.85*S.vol[n.h])); rr(x0,y0,w,y1-y0,4*dpr); cx.fill(); // 音量调小，那只手的音符也跟着变淡
     if(n.miss){ cx.strokeStyle="#ff4d4d"; cx.lineWidth=2*dpr; cx.stroke(); }
     const lab=S.names?PV.NAMES[n.m%12]:S.fing&&n.f; // 音名开着：音符上写 C–B，指法号留在键盘上
-    if(lab&&!dim&&y1-y0>14*dpr){ cx.fillStyle=k.black?"#fff":"#1b1b1b"; cx.fillText(lab,k.x,y1-Math.min(10*dpr,(y1-y0)/2)); }
+    if(lab&&!dim) labs.push([lab,k.x,y1]);
     rects.push([x0,y0,w,y1-y0,n]);
   }
+  // 音名/指法写在音符底端，白字黑边、最后画：短音符也看得到，不被别的音符盖住
+  cx.lineJoin="round"; cx.lineWidth=3*dpr; cx.strokeStyle="#000c"; cx.fillStyle="#fff";
+  for(const [lab,x,y] of labs){ const yy=y-6*dpr; cx.strokeText(lab,x,yy); cx.fillText(lab,x,yy); }
   // 编辑：选中的音符 = 粗的亮黄框 + 深色内圈（任何颜色上都看得清），上端一条小把手 = 拖它改长短
   const sr=S.edit&&rects.find(r=>r[4]===S.sel);
   if(sr){ const [x0,y0,w,h]=sr; cx.lineWidth=2*dpr; cx.strokeStyle="#000c"; rr(x0-1*dpr,y0-1*dpr,w+2*dpr,h+2*dpr,5*dpr); cx.stroke();
