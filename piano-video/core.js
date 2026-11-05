@@ -58,13 +58,17 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = 2) {
   return Int16Array.from(keys, (k, i) => {
     const c = px(k.x); if (!lit(c)) return -1;
     // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
-    const same = p => lit(p) && (pl(p) || pl(c) || hueDist(p[0], c[0]) < 30); // a pale pixel's hue is noise
+    // in pale mode the soft glow around a bar is as bright as the dimmer bars (and as the sparks around it), so a stretch
+    // only runs over pixels nearly as bright as the center, and a center well below the brightest pixel next to it sits on
+    // a brighter bar's glow (Falling Tears: the glow of a 10 px red F#3 bar lit F3 and G3 too)
+    const rel = pale <= 1, same = p => lit(p) && (pl(p) || pl(c) || hueDist(p[0], c[0]) < 30) && (!rel || p[2] >= .85 * c[2]); // a pale pixel's hue is noise
     // a pale bar's color = its most saturated pale pixel (not a neighbour's glow); (almost) none = a white bar, hue 60
     // shortcut: white bars share hue 60 with yellow ones, fine until a video has both
     const hue = () => { if (!pl(c)) return Math.round(c[0]); let b = [60, 0];
       for (let x = k.x - l; x <= k.x + r; x++) { const p = px(x); if (pl(p) && lit(p) && p[1] > b[1]) b = p; } return b[1] >= .1 ? Math.round(b[0]) : 60; };
     let l = 0, r = 0; while (r < 2 * ww && same(px(k.x + r + 1))) r++; while (l < 2 * ww && same(px(k.x - l - 1))) l++;
     const len = l + r + 1, wide = len >= .8 * ww, mid = k.x + (r - l) / 2;
+    if (rel) { let mx = 0; for (let x = k.x - l; x <= k.x + r; x++) mx = Math.max(mx, px(x)[2]); if (c[2] < .85 * mx) return -1; }
     if (len < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
     // a black key inside a wide stretch is usually just a white bar reaching its center -> not lit. But a white bar plus this
     // black key's bar by the same hand merge into one stretch; black-key bars are drawn darker, so a solidly darker patch

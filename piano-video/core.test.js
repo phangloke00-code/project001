@@ -81,6 +81,9 @@ assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
   assert.strictEqual(pk(row(() => {}), 60), -1);
   assert.strictEqual(pk(row(f => f(K(60).x - 8, K(60).x + 8, [250, 249, 238])), 60), 60); // white bar = hue 60
   assert.ok(PV.hueDist(pk(row(f => f(K(60).x - 8, K(60).x + 8, [218, 189, 203])), 60), 330) < 20); // whitish pink keeps its hue
+  // a 10 px red bar on F#4 with a wide red glow (v .7-.85) around it: only F#4, not F4 / G4 under the glow
+  const glow = row(f => { f(K(66).x - 13, K(66).x + 13, [180, 65, 60]); f(K(66).x - 5, K(66).x + 5, [255, 165, 150]); });
+  assert.ok(pk(glow, 66) >= 0); assert.strictEqual(pk(glow, 65), -1); assert.strictEqual(pk(glow, 67), -1);
   const BAR = [255, 170, 150], GLOW = [194, 74, 72], line = [], ups = [], T = [];
   const seq = [0, 0, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 0, 3, 0, 0]; // 1 bar, 2 glow between two repeated bars, 3 a one-frame spark
   seq.forEach((c, i) => { T.push(i / 30); line.push(row(f => c && f(K(60).x - 8, K(60).x + 8, [0, BAR, GLOW, BAR][c])));
