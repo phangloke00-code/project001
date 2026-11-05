@@ -52,16 +52,22 @@ function circMean(hs) {
 // (the falling-area background is dark/grey). For a black key the lit stretch around it must also be narrow:
 // white-key bars are often as wide as the key and reach right up to the black key's center.
 // pale (optional): pale/white pixels this bright count too (videos with white or whitish-pink bars; see paleNotes)
-function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = 2) {
+// pale omitted (auto): on a dark row (median v < .5) a greyish-tinted pixel (sat >= .1) well above the background
+// (v >= median + .2) counts too: see-through pastel bars (Are You Lost: lilac bars sat .18 v .64 on brown-grey sat .15 v .38).
+// White (sat < .1) stays out: sparks, glare and text.
+function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null) {
   const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4; return hsv(d[i], d[i + 1], d[i + 2]); };
-  const pl = p => p[1] < sMin, lit = p => p[2] >= vMin && (!pl(p) || p[2] >= pale), ww = keys.find(k => !k.black).w;
+  const auto = pale == null;
+  if (auto) { const hist = new Uint32Array(256); for (let x = 0; x < width; x++) hist[Math.max(d[x * 4], d[x * 4 + 1], d[x * 4 + 2])]++;
+    let med = 0; for (let n = 0; n <= width / 2; med++) n += hist[med]; med = (med - 1) / 255; pale = med < .5 ? Math.max(vMin, med + .2) : 2; }
+  const pl = p => p[1] < sMin, lit = p => p[2] >= vMin && (!pl(p) || p[2] >= pale && (!auto || p[1] >= .1)), ww = keys.find(k => !k.black).w;
   return Int16Array.from(keys, (k, i) => {
     const c = px(k.x); if (!lit(c)) return -1;
     // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
     // in pale mode the soft glow around a bar is as bright as the dimmer bars (and as the sparks around it), so a stretch
     // only runs over pixels nearly as bright as the center, and a center well below the brightest pixel next to it sits on
     // a brighter bar's glow (Falling Tears: the glow of a 10 px red F#3 bar lit F3 and G3 too)
-    const rel = pale <= 1, same = p => lit(p) && (pl(p) || pl(c) || hueDist(p[0], c[0]) < 30) && (!rel || p[2] >= .85 * c[2]); // a pale pixel's hue is noise
+    const rel = !auto && pale <= 1, same = p => lit(p) && (pl(p) || pl(c) || hueDist(p[0], c[0]) < 30) && (!rel || p[2] >= .85 * c[2]); // a pale pixel's hue is noise
     // a pale bar's color = its most saturated pale pixel (not a neighbour's glow); (almost) none = a white bar, hue 60
     // shortcut: white bars share hue 60 with yellow ones, fine until a video has both
     const hue = () => { if (!pl(c)) return Math.round(c[0]); let b = [60, 0];

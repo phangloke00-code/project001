@@ -25,6 +25,11 @@ assert.strictEqual(lit(px, 70), -1); assert.ok(PV.hueDist(lit(px, 71), 355) < 5)
 // A4 + B4 together, full width: still no A#4
 px = rowOf(f => { f(K(69).x - 10, K(69).x + 10, LIGHT); f(K(71).x - 10, K(71).x + 10, LIGHT); });
 assert.strictEqual(lit(px, 70), -1);
+// Are You Lost: see-through lilac bar (sat .18, v .64) on brown-grey (sat .15, v .38) lights its key; a white spark does not
+{ const bg = d => { for (let x = 0; x < 1040; x++) d.set([97, 83, 82, 255], x * 4); return d; };
+  const lil = bg(rowOf(() => {})); for (let x = Math.round(K(72).x - 9); x < K(72).x + 9; x++) lil.set([163, 133, 152, 255], x * 4);
+  for (let x = Math.round(K(60).x - 9); x < K(60).x + 9; x++) lil.set([250, 250, 250, 255], x * 4);
+  assert.ok(PV.hueDist(lit(lil, 72), 322) < 10); assert.strictEqual(lit(lil, 71), -1); assert.strictEqual(lit(lil, 60), -1); assert.strictEqual(lit(bg(rowOf(() => {})), 72), -1); }
 // A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
 assert.strictEqual(lit(px, 70), -1);
