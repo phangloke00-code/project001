@@ -12,3 +12,4 @@ Rebuild:
                window.BasicPitchLib = {BasicPitch,outputToNotesPoly,addPitchBendsToNoteEvents,noteFramesToTime,tf};
   npx esbuild entry.js --bundle --minify --format=iife --alias:@tensorflow/tfjs=./tfshim.js --alias:@tonejs/midi=./midistub.js --outfile=basic-pitch.min.js
 Model files: node_modules/@spotify/basic-pitch/model/*
+Weights renamed .bin -> .wasm (paths in model.json updated): the claude.ai artifact host only serves a fixed list of file types. tfjs reads the bytes the same either way.
