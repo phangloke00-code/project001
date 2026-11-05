@@ -122,7 +122,8 @@ function extractNotes(times, frames, keyMs, maxGap = .25, upper = null, split = 
 // A pixel counts when bright (v >= vMin, default .7, whatever the color), so the background (v .4-.65) drops out and white
 // bars count; a one-frame flash (spark) is dropped. Repeated notes on one key are bars a few px apart joined by a dimmer glow (v ~.75, as bright
 // as a cyan bar), so a run is also cut where its bright core (v >= .82) goes out and comes back.
-function paleNotes(times, rows, ups, width, keys, vMin = .7) {
+// kw/kb (optional): raw rows across the white keys (below the black ones) and across the black keys. See keyColors.
+function paleNotes(times, rows, ups, width, keys, vMin = .7, kw = null, kb = null) {
   const km = keys.map(k => k.m), S = (rs, v) => rs.map(r => sampleKeys(r, width, keys, v, .25, v));
   const loose = extractNotes(times, S(rows, vMin), km, .25, S(ups, vMin), 180);
   const core = extractNotes(times, S(rows, Math.max(vMin, .82)), km, .25, null, 180), out = [];
@@ -132,7 +133,30 @@ function paleNotes(times, rows, ups, width, keys, vMin = .7) {
     if (c.length < 2) { out.push(n); continue; }
     c.forEach((q, i) => { const t = i ? q.t : n.t, e = i < c.length - 1 ? c[i + 1].t : n.t + n.d; out.push({...n, t, d: +(e - t).toFixed(3)}); });
   }
-  return out.sort((a, b) => a.t - b.t || a.m - b.m);
+  return (kw ? keyColors(out, times, kw, kb, width, keys) : out).sort((a, b) => a.t - b.t || a.m - b.m);
+}
+
+// See-through bars take on the picture behind them (a white bar over teal reads light cyan, pink bars are near white), so
+// a pale bar's color says little. The keys say more: in Falling Tears red/cyan/pink notes light their key in that color,
+// white ones light nothing. A note's color = its key's light a moment (the fall from the line to the keys) after it
+// starts; no light = white (hue 60). A short note with no light is a spark or a bar's edge: dropped.
+function keyColors(notes, times, kw, kb, width, keys) {
+  const ww = keys.find(k => !k.black).w, K = {}; keys.forEach(k => K[k.m] = k);
+  const light = (k, i) => { const r = (k.black ? kb : kw)[i]; if (!r) return null; const hw = k.black ? k.w * .4 : ww * .35; let b = null;
+    for (let x = Math.max(0, Math.round(k.x - hw)); x <= Math.min(width - 1, k.x + hw); x++) {
+      const p = hsv(r[x * 4], r[x * 4 + 1], r[x * 4 + 2]); if (p[1] >= .45 && p[2] >= .6 && (!b || p[1] > b[1])) b = p; }
+    return b; };
+  const fi = notes.map(n => { const i = times.findIndex(t => t >= n.t - .001); return i < 0 ? times.length : i; });
+  // the fall in frames: the first delay at which nearly as many keys are lit as at the best one
+  const c = []; for (let L = 0; L <= 45; L++) c.push(notes.filter((n, j) => light(K[n.m], fi[j] + L)).length);
+  const lag = c.findIndex(v => v >= .9 * Math.max(...c));
+  const out = [];
+  notes.forEach((n, j) => {
+    let p = null; const end = fi[j] + lag + Math.min(2, Math.max(0, times.filter(t => t >= n.t && t < n.t + n.d - .001).length - 1));
+    for (let i = fi[j] + Math.max(0, lag - 1); i <= end && !p; i++) p = light(K[n.m], i);
+    if (p) out.push({...n, hue: Math.round(p[0])}); else if (n.d >= .1) out.push({...n, hue: 60});
+  });
+  return out;
 }
 
 // Videos whose pressed keys light up: the key surface is a cleaner signal than the falling bars (hollow neon bars, sparks,
@@ -431,6 +455,6 @@ function arrange(raw, style = "full") {
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, paleNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, paleNotes, keyColors, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -66,12 +66,13 @@ const cols = PV.assignHands(notes);
 assert.deepStrictEqual(notes.map(n => n.h), ["L", "R", "L"]);
 assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
 
-// four colors (Falling Tears): red bass + white chords = left hand, cyan + pink voices = right hand
+// four colors (Falling Tears): red bass = left hand; white chords + cyan + pink = right hand (red + white together often span
+// two octaves, so white can't be the left hand there either). Average pitches as measured: 47.5, 62.5, 72, 76
 { const ns = [], add = (hue, ms) => { for (let i = 0; i < 20; i++) ns.push({m: ms[i % ms.length], t: i, d: .2, hue}); };
-  add(5, [41, 48, 55]); add(60, [55, 59, 63]); add(185, [69, 72, 75]); add(320, [72, 77, 81]); // average pitches as measured
+  add(5, [41, 48, 54]); add(60, [58, 62, 67]); add(185, [69, 72, 75]); add(320, [72, 76, 80]);
   const c = PV.assignHands(ns);
-  assert.deepStrictEqual([5, 60, 185, 320].map(h => ns.find(n => n.hue === h).h), ["L", "L", "R", "R"]);
-  assert.ok(PV.hueDist(c.L, 5) < 15 && PV.hueDist(c.R, 185) < 15); }
+  assert.deepStrictEqual([5, 60, 185, 320].map(h => ns.find(n => n.hue === h).h), ["L", "R", "R", "R"]);
+  assert.ok(PV.hueDist(c.L, 5) < 15); }
 
 // bright busy background + white/whitish bars (TOYOKI Falling Tears): the default rule lights the wood (v .45, s .3) as a
 // note; paleNotes' brightness rule drops it, sees white and whitish-pink bars, and cuts repeated notes at the dim glow between bars
@@ -90,6 +91,18 @@ assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
     ups.push(row(f => (seq[i + 2] || seq[i + 3]) && f(K(60).x - 8, K(60).x + 8, BAR))); });
   const ns = PV.paleNotes(T, line, ups, 1040, keys);
   assert.deepStrictEqual(ns.map(n => [n.m, Math.round(n.t * 30), Math.round(n.d * 30)]), [[60, 2, 5], [60, 7, 4]]); } // the glow frame stays with the first note; the spark is gone
+
+// keyColors (Falling Tears): a see-through bar's color is unreliable; its key's light, a fall time later, isn't.
+// Lit magenta -> hue ~305; no light and long = a white note (hue 60); no light and short = a spark, dropped
+{ const T = Array.from({length: 40}, (_, i) => i / 30), KEY = [255, 60, 230], blank = () => rowOf(() => {});
+  const kw = T.map(() => blank()), kb = T.map(() => blank());
+  for (let i = 8; i < 16; i++) kw[i] = rowOf(f => f(K(64).x - 4, K(64).x + 4, KEY)); // E4's key lit 8 frames after its bar hit the line
+  for (let i = 24; i < 30; i++) kw[i] = rowOf(f => [64, 67, 72].forEach(m => f(K(m).x - 4, K(m).x + 4, [255, 40, 30]))); // more notes, so the fall time is found
+  const ns = [{m: 64, t: 0, d: .3, hue: 200}, {m: 60, t: 0, d: .4, hue: 200}, {m: 62, t: .2, d: .05, hue: 240},
+    {m: 64, t: 16 / 30, d: .2, hue: 0}, {m: 67, t: 16 / 30, d: .2, hue: 0}, {m: 72, t: 16 / 30, d: .2, hue: 0}];
+  const out = PV.keyColors(ns, T, kw, kb, 1040, keys);
+  assert.deepStrictEqual(out.map(n => n.m), [64, 60, 64, 67, 72]);
+  assert.ok(PV.hueDist(out[0].hue, 305) < 10); assert.strictEqual(out[1].hue, 60); assert.ok(PV.hueDist(out[2].hue, 3) < 10); }
 
 // fingering: C major triad RH 1-3-5, LH 5-3-1; scale RH has no illegal crossings
 const chord = h => [60, 64, 67].map(m => ({m, t: 0, d: 1, h}));
