@@ -79,7 +79,11 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null, bg = nul
     const hue = () => { if (!pl(c)) return Math.round(c[0]); let b = [60, 0];
       for (let x = k.x - l; x <= k.x + r; x++) { const p = px(x); if (pl(p) && lit(p) && p[2] >= .85 * c[2] && p[1] > b[1]) b = p; } return b[1] >= .07 ? Math.round(b[0]) : 60; };
     let l = 0, r = 0; while (r < 2 * ww && same(px(k.x + r + 1))) r++; while (l < 2 * ww && same(px(k.x - l - 1))) l++;
-    const len = l + r + 1, wide = len >= .8 * ww, mid = k.x + (r - l) / 2;
+    // how wide a bar is and where its middle is = its bright core (>= 65% of the brightest pixel; soft edges are ~50%, a darker black-key bar next to its hand's white one ~73%): they add 1-2 px
+    // that depend on how the browser scaled the frame (one user's Chrome: a C#3 bar 1-2 px wider than ours lost its middle)
+    let mx = 0, at = k.x; for (let x = k.x - l; x <= k.x + r; x++) { const v = px(x)[2]; if (v > mx) { mx = v; at = x; } }
+    let a = at, b = at; while (a > k.x - l && px(a - 1)[2] >= .65 * mx) a--; while (b < k.x + r && px(b + 1)[2] >= .65 * mx) b++;
+    const len = l + r + 1, wide = b - a + 1 >= .8 * ww, mid = (a + b) / 2;
     if (rel) { let mx = 0; for (let x = k.x - l; x <= k.x + r; x++) mx = Math.max(mx, px(x)[2]); if (c[2] < .85 * mx) return -1; }
     if (len < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
     if (c.bg && !(c[2] >= vMin && c[1] >= sMin) && (l >= 2 * ww || r >= 2 * ww)) return -1; // dim + no edge in sight: the background lighting up, not a bar

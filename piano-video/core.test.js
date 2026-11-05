@@ -45,6 +45,10 @@ assert.strictEqual(lit(px, 70), -1);
   const rows = Array.from({length: 40}, () => fill([69, 52, 58])), r = rows[20] = fill([69, 52, 58]), x0 = Math.round(K(47).x);
   for (let x = x0 - 10; x <= x0 + 10; x++) r.set([...(Math.abs(x - x0) > 8 ? [122, 102, 110] : [160, 160, 182]), 255], x * 4);
   assert.ok(PV.hueDist(PV.sampleKeys(r, 1040, keys, .4, .25, null, PV.lineBg(rows)[20])[keys.indexOf(K(47))], 240) < 15); }
+// a black-key bar whose soft edges make the lit stretch just over .8 white keys (browsers scale the frame differently: one
+// user's Chrome got 1-2 px wider edges than ours) is still that black key's note: only the bright core says how wide a bar is
+{ const x0 = Math.round(K(49).x), row = rowOf(f => { f(x0 - 8, x0 + 9, [130, 80, 80]); f(x0 - 4, x0 + 5, [235, 100, 98]); });
+  assert.ok(PV.hueDist(lit(row, 49), 0) < 10); assert.strictEqual(lit(row, 48), -1); assert.strictEqual(lit(row, 50), -1); }
 // A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
 assert.strictEqual(lit(px, 70), -1);
