@@ -60,7 +60,7 @@ function circMean(hs) {
 function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null, bg = null) {
   const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4, p = hsv(d[i], d[i + 1], d[i + 2]);
     if (bg) { const b = hsv(bg[i], bg[i + 1], bg[i + 2]); // same hue, no more saturated = white light over the background (glow)
-      p.bg = b[2] < .5 && p[1] >= .12 && p[2] > b[2] + .1 && Math.hypot(d[i] - bg[i], d[i + 1] - bg[i + 1], d[i + 2] - bg[i + 2]) >= 40 &&
+      p.bg = b[2] < .5 && p[1] >= .07 && p[2] > b[2] + .1 && Math.hypot(d[i] - bg[i], d[i + 1] - bg[i + 1], d[i + 2] - bg[i + 2]) >= 40 &&
         !(hueDist(p[0], b[0]) < 25 && p[1] <= b[1] + .02); }
     return p; };
   const auto = pale == null;
@@ -77,7 +77,7 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null, bg = nul
     // a pale bar's color = its most saturated pale pixel (not a neighbour's glow); (almost) none = a white bar, hue 60
     // shortcut: white bars share hue 60 with yellow ones, fine until a video has both
     const hue = () => { if (!pl(c)) return Math.round(c[0]); let b = [60, 0];
-      for (let x = k.x - l; x <= k.x + r; x++) { const p = px(x); if (pl(p) && lit(p) && p[1] > b[1]) b = p; } return b[1] >= .1 ? Math.round(b[0]) : 60; };
+      for (let x = k.x - l; x <= k.x + r; x++) { const p = px(x); if (pl(p) && lit(p) && p[2] >= .85 * c[2] && p[1] > b[1]) b = p; } return b[1] >= .07 ? Math.round(b[0]) : 60; };
     let l = 0, r = 0; while (r < 2 * ww && same(px(k.x + r + 1))) r++; while (l < 2 * ww && same(px(k.x - l - 1))) l++;
     const len = l + r + 1, wide = len >= .8 * ww, mid = k.x + (r - l) / 2;
     if (rel) { let mx = 0; for (let x = k.x - l; x <= k.x + r; x++) mx = Math.max(mx, px(x)[2]); if (c[2] < .85 * mx) return -1; }

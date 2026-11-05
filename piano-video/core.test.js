@@ -39,6 +39,12 @@ assert.strictEqual(lit(px, 70), -1);
   assert.strictEqual(at(rows[20], null, 72), -1); assert.ok(PV.hueDist(at(rows[20], bg[20], 72), 306) < 15); assert.strictEqual(at(rows[3], bg[3], 72), -1);
   const cy = Array.from({length: 40}, () => fill([45, 62, 69])); cy[20] = bar(fill([45, 62, 69]), 72, [80, 95, 100]);
   assert.strictEqual(at(cy[20], PV.lineBg(cy)[20], 72), -1); }
+// a near-white blue bar (sat .10-.15) whose edges blend into a pink background: its color is the bar's, not the more
+// saturated pink edge (暮色回响 B1 flipped 227 <-> 337 every few frames and was cut into ~18 notes)
+{ const fill = rgb => { const d = new Uint8ClampedArray(1040 * 4); for (let x = 0; x < 1040; x++) d.set([...rgb, 255], x * 4); return d; };
+  const rows = Array.from({length: 40}, () => fill([69, 52, 58])), r = rows[20] = fill([69, 52, 58]), x0 = Math.round(K(47).x);
+  for (let x = x0 - 10; x <= x0 + 10; x++) r.set([...(Math.abs(x - x0) > 8 ? [122, 102, 110] : [160, 160, 182]), 255], x * 4);
+  assert.ok(PV.hueDist(PV.sampleKeys(r, 1040, keys, .4, .25, null, PV.lineBg(rows)[20])[keys.indexOf(K(47))], 240) < 15); }
 // A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
 assert.strictEqual(lit(px, 70), -1);
