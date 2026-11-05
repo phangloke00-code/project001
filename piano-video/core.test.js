@@ -124,4 +124,29 @@ assert.deepStrictEqual(back.map(n => n.v), [1, .5, .8]); // velocity kept (to 1/
 { // bass change splits a long pedal
   const pm = PV.pedalMarks([{t: 0, d: 4, s: 1, m: 48, h: "L"}, {t: 2, d: 2, s: 1, m: 43, h: "L"}]);
   assert.deepStrictEqual(pm, [[0, 2], [2, 5]]); }
+{ // song audio -> piano: melody on top goes to the right hand, chords under it become a left-hand bass/broken chord
+  const raw = [], q = .5; // 120 BPM, 4 bars: C C Am Am; melody quarter notes, chord pad + bass under it, a little noise
+  const mel = [72, 74, 76, 77, 79, 77, 76, 74, 72, 76, 81, 79, 76, 72, 69, 72];
+  mel.forEach((m, i) => raw.push({t: i * q, d: q * .9, m, v: .8}));
+  for (let b = 0; b < 4; b++) { const ch = b < 2 ? [48, 60, 64, 67] : [45, 57, 60, 64]; ch.forEach(m => raw.push({t: b * 2, d: 1.9, m, v: .5})); }
+  raw.push({t: 1.01, d: .03, m: 90, v: .9}, {t: 3.3, d: .4, m: 99, v: .05}); // a click (too short) and a whisper (too quiet): dropped
+  const easy = PV.arrange(raw, "easy"), full = PV.arrange(raw, "full"), R = full.filter(n => n.h === "R"), L = full.filter(n => n.h === "L");
+  assert.deepStrictEqual(R.map(n => n.m), mel); // melody kept, pad tones under it are not melody
+  assert.ok(L.every(n => n.m < 72) && L.length >= 12); // broken chord every beat
+  const roots = t => L.filter(n => n.t >= t && n.t < t + 4).map(n => n.m);
+  assert.ok(roots(0).every(m => [0, 4, 7].includes(m % 12)) && roots(0).some(m => m % 12 === 0)); // C major
+  assert.ok(roots(4).every(m => [9, 0, 4].includes(m % 12)) && roots(4).some(m => m % 12 === 9)); // A minor
+  assert.ok(L.filter(n => n.m === Math.min(...L.map(x => x.m))).length >= 2 && Math.min(...L.map(n => n.m)) >= 40);
+  assert.ok(L.some(n => n.s >= .3) && PV.pedalMarks(full).length >= 2); // pedal held per chord, changed at the chord change
+  const eL = easy.filter(n => n.h === "L"); assert.ok(eL.length >= 4 && eL.every(n => [0, 9].includes(n.m % 12))); // easy: just the root
+  const r = PV.arrange(raw, "raw"); assert.ok(r.length === raw.length - 2 && r.every(n => n.h === (n.m < 60 ? "L" : "R")));
+  // a low melody (sung around C4) is lifted an octave so it sits above the left hand
+  // the model also hears overtones (2 octaves / an octave+5th up, quieter) and chord tones where the melody holds: not melody
+  const noisy = [...raw, ...mel.map((m, i) => ({t: i * q + .01, d: .3, m: m + (i % 2 ? 24 : 19), v: .45})), {t: 4.02, d: .4, m: 57, v: .6}, {t: 6.01, d: .3, m: 59, v: .5}, {t: 3 * q + .2, d: .25, m: 98, v: .7}];
+  noisy.filter(n => n.m === 69 || n.m === 72).forEach(n => { if (n.t === 14 * q) n.d = q * 1.9; }); // hold the A4 over the next onset
+  assert.deepStrictEqual(PV.arrange(noisy, "full").filter(n => n.h === "R").map(n => n.m), mel);
+  assert.strictEqual(L[0].m % 12, 0); // each chord starts its broken pattern on the root
+  const low = PV.arrange(mel.map((m, i) => ({t: i * q, d: q * .9, m: m - 12, v: .8})), "full");
+  assert.deepStrictEqual(low.filter(n => n.h === "R").map(n => n.m), mel);
+}
 console.log("core ok");

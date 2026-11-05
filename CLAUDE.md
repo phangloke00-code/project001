@@ -4,7 +4,7 @@
 
 | 目录 | app | 说明 |
 |---|---|---|
-| `piano-video/` | **落键练琴**（主力，当前 v3.3） | 把“音符从上往下掉”的钢琴教学视频识别成音符，再拿来练习 |
+| `piano-video/` | **落键练琴**（主力，当前 v3.4） | 把“音符从上往下掉”的钢琴教学视频识别成音符，再拿来练习 |
 | `index.html`（根目录） | 琴键闯关 | 早期的竖屏闯关学琴页（麦克风听音），目标曲《失眠的夜》；现在基本不动 |
 
 用户说中文，回复用中文。
@@ -16,7 +16,7 @@
 - `piano-video/core.test.js`：测试，`node piano-video/core.test.js`，输出 `core ok`。改 `core.js` 先在这里加一个能复现问题的用例。
 - `piano-video/server.py`：本地服务器 `python3 server.py` → http://localhost:8000 ，多一个 `/api/yt?url=` 用 yt-dlp 下载 YouTube（需要 `pip install yt-dlp`，最好有 ffmpeg）。只监听 127.0.0.1。
 - `piano-video/sw.js` + `manifest.webmanifest` + 图标：装到主屏幕、离线可用。
-- `piano-video/piano/*.mp3`：Salamander 钢琴采样（每 3 个键一个，CC-BY 3.0）。`lib/mp4box.all.min.js`：极速识别用。
+- `piano-video/piano/*.mp3`：Salamander 钢琴采样（每 3 个键一个，CC-BY 3.0）。`lib/mp4box.all.min.js`：极速识别用。`lib/basic-pitch.min.js` + `lib/basic-pitch/`：Spotify Basic Pitch 扒谱模型（tfjs，Apache-2.0），歌曲 → 钢琴版用，点了才载入；重建方法见 `lib/basic-pitch/README.md`。
 
 ## 识别流程（core.js）
 
@@ -38,7 +38,9 @@
 
 看演示 / 等我弹 / 跟节奏；左手/右手/双手；速度 25–150%；A-B 循环、按小节循环、练熟自动加速；节拍器、预备拍、延音踏板、指法号、全键盘、全屏；输入可用 MIDI 键盘、麦克风、电脑键盘、点屏幕琴键；画面手势（上下拖=进度，单击=播放/暂停，双击左右=±5 秒）；暂停时点音符改指法/换手；练习记录、进步曲线、难点、回放；导出 MIDI；备份/恢复。
 
-**v3.3**：✎ 编辑模式（点音符选中=黄色粗框，拖动 上下=时间/左右=音高/拖上端=长短，选中后点琴键改音，＋音/换手/指法/删除，↶↷ 撤销重做，方向键/Delete/Ctrl+Z/Y）；版本记录 `pv-ver-<id>`（完成编辑自动存，最多 8 个）+ 原始版本 `pv-orig-<id>`（第一次编辑前存）；左右手颜色（7 个低饱和预设 + 自定义，最近 5 个，存 `[色相,饱和度]`）；踏板提示条左/右；设置面板分 练习/声音/显示/曲子 四组、名称一列对齐；进入练习/校准/分析会 `pushState`，手机返回键回曲库。注意：备份文件还不包含版本记录。数据只存在浏览器 localStorage（键名前缀 `pv-`）。
+**v3.3**：✎ 编辑模式（点音符选中=黄色粗框，拖动 上下=时间/左右=音高/拖上端=长短，选中后点琴键改音，＋音/换手/指法/删除，↶↷ 撤销重做，方向键/Delete/Ctrl+Z/Y）；版本记录 `pv-ver-<id>`（完成编辑自动存，最多 8 个）+ 原始版本 `pv-orig-<id>`（第一次编辑前存）；左右手颜色（7 个低饱和预设 + 自定义，最近 5 个，存 `[色相,饱和度]`）；踏板提示条左/右；设置面板分 练习/声音/显示/曲子 四组、名称一列对齐；进入练习/校准/分析会 `pushState`，手机返回键回曲库。注意：备份文件还不包含版本记录。
+
+**v3.4 歌曲 → 钢琴版**（曲库页的卡片，也能用 YouTube 链接 + server.py）：`songToPiano` 把音频解成 22050 Hz 单声道 → Basic Pitch 扒出音符 → `PV.arrange(raw, "full"|"easy"|"raw")`。arrange：去掉太短/太弱的音；旋律 = 每个起音最高的音（去掉泛音假音：和低音同时开始、是它的八度/十二度…且很短或很弱；去掉比旋律中位数低 10 以上、高 15 以上的）；人声太低就整体升八度；每半小节按 12 个音级找大/小三和弦，左手 标准 = 根–五–十度–五 每拍、简单 = 每半小节一个根音，`s` 让踏板跟和弦换。调参时用 Playwright 把 piano/*.mp3 合成一段歌（旋律 + C/Am/F/G）喂给真模型验证。数据只存在浏览器 localStorage（键名前缀 `pv-`）。
 
 ## 发布（改完必须做）
 
@@ -46,7 +48,7 @@
 2. 跑 `node piano-video/core.test.js`。
 3. 提交，推到工作分支，**每次都同时推到默认分支** `claude/inspiring-gates-gza3ne`（用户要求的；手机用的 GitHub Pages 从这里发布；这个仓库没有 `main`）。
 4. 更新网页：claude.ai 上的 artifact **落键练琴** https://claude.ai/artifact/3PMPNWuorkYQP8EuMEYQdZ 。
-   用 Artifact 工具：先 `read` 这个 url，再 publish，`url` 填它，`file_path` = `piano-video/index.html`，`files` = `{"core.js": "piano-video/core.js"}`（piano/ 和 lib/ 已经在上面，没改就不用重传）。
+   用 Artifact 工具：先 `read` 这个 url，再 publish，`url` 填它，`file_path` = `piano-video/index.html`，`files` = `{"core.js": "piano-video/core.js"}`（piano/ 和 lib/ 已经在上面，包括 v3.4 的 basic-pitch，没改就不用重传）。
    嵌在 claude.ai 里的页面不能下载文件、不能用麦克风，页面里已经有提示（让用户用 GitHub Pages / 本地 server.py 版本）。
 
 ## 调试识别问题的方法

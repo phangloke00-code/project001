@@ -342,9 +342,59 @@ function pedalMarks(notes) {
   for (const [a, b] of out) { let s0 = a; for (const c of ch) if (c > s0 + .5 && c < b - .3) { add(s0, c); s0 = c; } add(s0, b); }
   return res;
 }
+// Song audio -> piano. raw = [{t, d, m, v}] from the Basic Pitch model (v = amplitude 0-1).
+// "raw": keep every note (a piano recording), hands split at middle C.
+// "easy" / "full": right hand = the melody (the top voice), left hand = the chord of each half bar, as one bass note
+// per half bar (easy) or a broken chord root-5th-10th-5th on every beat (full), with the pedal held through each chord.
+const CHORD = [[0, 4, 7], [0, 3, 7]]; // major, minor
+function arrange(raw, style = "full") {
+  const vMax = Math.max(.01, ...raw.map(n => n.v));
+  const ns = raw.filter(n => n.d >= .06 && n.v >= .2 * vMax && n.m >= 21 && n.m <= 108) // clicks and faint ghosts out
+    .map(n => ({t: +n.t.toFixed(3), d: +n.d.toFixed(3), m: n.m, v: +Math.min(1, .45 + .55 * n.v / vMax).toFixed(2), a: n.v})).sort((a, b) => a.t - b.t || b.m - a.m);
+  if (style === "raw" || !ns.length) return ns.map(({a, ...n}) => ({...n, h: n.m < 60 ? "L" : "R"}));
+  // melody = skyline: the top note of each onset, unless a higher melody note is still sounding over it
+  const mel = [];
+  for (const g of groupByOnset(ns.filter(n => n.m >= 55))) {
+    // the model also hears overtones (an octave, octave+5th, 2 octaves… above a note that is sounding): short and/or much
+    // quieter than that note. Its amplitudes are rough (a chord tone can score louder than the melody), so length decides too.
+    const am = Math.max(...g.notes.map(n => n.a)), ok = g.notes.filter(n => n.d >= .1 && n.a >= .4 * am &&
+      !ns.some(o => o !== n && [12, 19, 24, 28, 31].includes(n.m - o.m) && (n.d < .2 && n.d < .6 * o.d || n.a < .6 * o.a) && Math.abs(o.t - n.t) <= .05));
+    if (!ok.length) continue;
+    const top = ok.reduce((a, b) => b.m > a.m ? b : a), p = mel[mel.length - 1];
+    if (p && p.t + p.d > top.t + .05 && p.m > top.m) continue;
+    if (p && p.t + p.d > top.t) { p.d = +(top.t - p.t).toFixed(3); if (p.d < .06) mel.pop(); }
+    mel.push({t: top.t, d: top.d, m: top.m, v: top.v, h: "R"});
+  }
+  const med = mel.map(n => n.m).sort((a, b) => a - b)[mel.length >> 1] || 72, sh = med < 66 ? 12 : med > 84 ? -12 : 0; // a sung line sits low: lift it above the left hand
+  for (let i = mel.length - 1; i >= 0; i--) if (mel[i].m < med - 10 || mel[i].m > med + 15) mel.splice(i, 1); // chord tones heard while the melody holds a note; stray overtones far above the tune
+  mel.forEach(n => n.m += sh);
+  // chords: pitch classes sounding in each half bar (bass counts extra), best major/minor triad
+  const g = beatGrid(ns) || {p: .5, t0: ns[0].t, bpb: 4}, seg = 2 * g.p, end = Math.max(...ns.map(n => n.t + n.d));
+  let a = g.t0 - Math.ceil((g.t0 - ns[0].t) / seg + 1e-9) * seg; const chords = [];
+  for (; a < end; a += seg) {
+    const ch = new Array(12).fill(0);
+    for (const n of ns) { const o = Math.min(n.t + n.d, a + seg) - Math.max(n.t, a); if (o > 0) ch[n.m % 12] += o * n.v * (n.m < 55 ? 2 : 1); }
+    let best = null;
+    for (let r = 0; r < 12; r++) for (const c of CHORD) { const sc = c.reduce((x, i) => x + ch[(r + i) % 12], 0) + .5 * ch[r]; if (!best || sc > best.sc) best = {sc, r, c}; }
+    const tot = ch.reduce((x, y) => x + y, 0);
+    const p = chords[chords.length - 1];
+    if (tot < .05 * seg) { if (p) p.open = true; continue; } // silence: no chord
+    if (p && !p.open && p.r === best.r && p.c === best.c && p.b >= a - 1e-6) p.b = a + seg; else chords.push({a, b: a + seg, r: best.r, c: best.c});
+  }
+  const lh = [];
+  for (const c of chords) {
+    const root = 40 + ((c.r - 4 + 12) % 12), t0 = Math.max(0, c.a); // E2..D#3
+    if (style === "easy") for (let t = t0; t < c.b - .05; t += seg) lh.push({t, d: Math.min(seg, c.b - t) * .95, m: root, v: .6});
+    else for (let k = Math.round((t0 - g.t0) / g.p), t = g.t0 + k * g.p, j = 0; t < c.b - .05; k++, t = g.t0 + k * g.p) {
+      if (t < t0 - .05) continue;
+      lh.push({t, d: g.p * .95, m: root + [0, 7, 12 + c.c[1], 7][j++ % 4], v: .55}); } // every chord starts on its root
+    for (const n of lh) if (n.t >= t0 - .05 && n.t < c.b) { n.t = +n.t.toFixed(3); n.d = +n.d.toFixed(3); n.s = +Math.max(0, c.b - n.t - n.d).toFixed(3); n.h = "L"; }
+  }
+  return [...mel, ...lh].sort((a, b) => a.t - b.t || a.m - b.m);
+}
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);

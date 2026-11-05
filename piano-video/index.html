@@ -63,7 +63,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.3 · 11-05</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.4 · 11-05</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -73,6 +73,14 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <div class="row"><input id="file" type="file" accept="video/*,.mid,.midi" hidden><button class="pri" data-act="pick">选择视频或 MIDI 文件</button></div>
     <div class="row"><input id="yt" type="url" placeholder="或粘贴 YouTube 链接"><button data-act="yt">下载并识别</button></div>
     <div id="ytMsg" class="muted"></div>
+  </div>
+  <div class="card">
+    <h2>🎵 歌曲 → 钢琴版</h2>
+    <p class="muted" style="margin:0 0 8px">放一首歌进来（mp3 / m4a / wav，或带声音的视频），自动扒出音符、编成钢琴版来练。在本机算，歌不会上传。</p>
+    <div class="grp"><span>编法</span><div class="opt"><span class="seg"><button data-arr="full">标准</button><button data-arr="easy">简单</button><button data-arr="raw">原样</button></span></div></div>
+    <div class="grp"><span></span><div class="opt muted" id="arrHelp"></div></div>
+    <div class="row"><input id="songFile" type="file" accept="audio/*,video/*" hidden><button class="pri" data-act="pickSong">选择歌曲文件</button><button data-act="ytSong">用上面的 YouTube 链接</button></div>
+    <div id="arrMsg" class="muted"></div><div class="bar" id="arrBox" hidden><i id="arrBar"></i></div>
   </div>
   <div class="card"><h2>我的曲子</h2><div id="songList"></div>
     <div class="row" style="margin-top:8px"><button data-act="backup">💾 备份全部（曲子 + 练习记录）</button><input id="bak" type="file" accept=".json,application/json" hidden><button data-act="restore">📂 从备份恢复</button>
@@ -167,7 +175,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=3.3"></script>
+<script src="core.js?v=3.4"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -238,6 +246,7 @@ document.addEventListener("click",e=>{
   if(b.dataset.hand) return setHand(b.dataset.hand);
   if(b.dataset.loop) { const [a,z]=b.dataset.loop.split(",").map(Number); S.loop={a,b:z}; finishRec(); resetFrom(a); show("play"); return uiSync(); }
   if(b.dataset.replay!=null) return replay(+b.dataset.replay);
+  if(b.dataset.arr){ ARR=b.dataset.arr; store.set("arr",ARR); return arrUI(); }
   if(b.dataset.ver!=null) return restoreVer(b.dataset.ver);
   if(b.dataset.col){ S.color[b.dataset.col]=b.dataset.c?b.dataset.c.split(",").map(Number):null; return uiSync(); }
   if(b.dataset.pside){ S.pside=b.dataset.pside; return uiSync(); }
@@ -245,7 +254,7 @@ document.addEventListener("click",e=>{
 });
 const ACT={
   pick:()=>$("file").click(),
-  yt:loadYT, auto:()=>{CAL.auto=true;drawCal();}, scan, scanStop:()=>{SCAN.stop=true;SCAN.done?.();},
+  yt:()=>loadYT(), ytSong:()=>loadYT(true), pickSong:()=>$("songFile").click(), auto:()=>{CAL.auto=true;drawCal();}, scan, scanStop:()=>{SCAN.stop=true;SCAN.done?.();},
   toggle:()=>S.playing?pause():play(), restart:()=>{finishRec();resetFrom(startT());},
   setA:()=>{S.loop={a:S.t,b:Math.max(S.t+1,S.loop?.b??S.song.dur)};uiSync();},
   setB:()=>{ if(!S.loop) S.loop={a:startT(),b:S.t}; else if(S.t>S.loop.a) S.loop.b=S.t; uiSync(); },
@@ -290,19 +299,46 @@ $("bak").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f
       const old=store.get("att-"+s.id,[]), seen=new Set(old.map(a=>a.date)); store.set("att-"+s.id,[...old,...(d.att?.[s.id]||[]).filter(a=>!seen.has(a.date))].sort((a,b)=>b.date-a.date).slice(0,60)); }
     saveSongs(); renderLib(); toast(`已恢复 ${d.songs.length} 首（新增 ${add} 首）`);
   }catch(err){ toast("恢复失败："+err.message); } };
-async function loadYT(){
+async function loadYT(toPiano){
   const url=$("yt").value.trim(); if(!url) return toast("先粘贴 YouTube 链接");
   const msg=$("ytMsg"); msg.textContent="下载中…（视频越长越久）";
   try{
     const r=await fetch("api/yt?url="+encodeURIComponent(url));
     if(!r.ok) throw new Error(r.status===404?"NO_SERVER":(await r.text()).replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().slice(0,200));
     const blob=await r.blob(); if(!blob.type.startsWith("video")) throw new Error("NO_SERVER");
-    msg.textContent=""; loadVideo(URL.createObjectURL(blob),"YouTube "+(url.match(/(?:v=|youtu\.be\/)([\w-]{6,})/)?.[1]||""));
+    msg.textContent=""; const id=url.match(/(?:v=|youtu\.be\/)([\w-]{6,})/)?.[1]||"";
+    if(toPiano) return songToPiano(blob,"YouTube "+id); loadVideo(URL.createObjectURL(blob),"YouTube "+id);
   }catch(err){
     msg.innerHTML=err.message==="NO_SERVER"||err.name==="TypeError"
       ?"浏览器不能直接下载 YouTube 视频。在电脑上运行本文件夹里的 <code>server.py</code>（需要 <code>pip install yt-dlp</code>），然后打开 <code>http://localhost:8000/</code> 再粘贴链接。或者先把视频下载成 mp4 再上传。"
       :"下载失败："+esc(err.message);
   }
+}
+/* ===================== 歌曲 → 钢琴版 ===================== */
+// Spotify 的 Basic Pitch 模型（lib/，第一次用时才载入）把声音扒成音符，再由 PV.arrange 编成两只手
+let ARR=store.get("arr","full"), BP=null;
+const ARR_HELP={full:"右手弹旋律，左手每拍弹分解和弦（根音–五音–十度–五音），踏板跟着和弦换。适合普通歌曲。",easy:"右手弹旋律，左手每半小节按一个低音。最容易上手。",raw:"扒到什么弹什么，不改编。适合钢琴独奏的录音。"};
+function arrUI(){ for(const b of document.querySelectorAll("[data-arr]")) b.classList.toggle("on",b.dataset.arr===ARR); $("arrHelp").textContent=ARR_HELP[ARR]; }
+$("songFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f) songToPiano(f,f.name.replace(/\.[^.]+$/,"")); };
+async function songToPiano(blob,title){
+  if(BP?.busy) return toast("正在转换另一首，请稍等");
+  const msg=t=>$("arrMsg").textContent=t, bar=$("arrBar"); $("arrBox").hidden=false; bar.style.width="0";
+  try{
+    msg("载入扒谱模型（第一次要下载约 1.7 MB）…");
+    if(!window.BasicPitchLib) await new Promise((res,rej)=>{ const sc=document.createElement("script"); sc.src="lib/basic-pitch.min.js"; sc.onload=res; sc.onerror=()=>rej(new Error("扒谱模型载入失败，检查网络再试")); document.head.append(sc); });
+    const B=BasicPitchLib; BP??={bp:new B.BasicPitch("lib/basic-pitch/model.json")}; BP.busy=true; await BP.bp.model;
+    msg("读取音频…");
+    const au=await new OfflineAudioContext(1,1,22050).decodeAudioData(await blob.arrayBuffer()), x=au.getChannelData(0); // 模型要 22050 Hz 单声道
+    if(au.numberOfChannels>1){ const y=au.getChannelData(1); for(let i=0;i<x.length;i++) x[i]=(x[i]+y[i])/2; }
+    const fr=[],on=[], len=fmt(x.length/22050); B.tf.engine().startScope(); // 模型每段的中间结果不会自己释放：整段算完一起清掉
+    try{ await BP.bp.evaluateModel(x,(f,o)=>{fr.push(...f);on.push(...o);},p=>{ const pc=Math.round(p*100); bar.style.width=pc+"%"; msg(`扒谱中 ${pc}%（${len} 的歌，请停在这个页面）`); document.title=`扒谱 ${pc}% · 落键练琴`; }); }
+    finally{ B.tf.engine().endScope(); }
+    const raw=B.noteFramesToTime(B.outputToNotesPoly(fr,on,.25,.25,5)).map(n=>({t:n.startTimeSeconds,d:n.durationSeconds,m:n.pitchMidi,v:n.amplitude}));
+    const notes=PV.arrange(raw,ARR); if(!notes.length) throw new Error("没扒到音符（这段音频可能是静音）");
+    const t0=notes[0].t-2; notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // 第一个音前留 2 秒
+    msg(""); newSong(title+(ARR==="raw"?"":" · 钢琴版"),notes,{L:95,R:355}); toast(`扒到 ${raw.length} 个音，编成 ${notes.length} 个。不对的地方用 ✎ 编辑改。`);
+  }catch(e){ console.warn(e); msg("转换失败："+(e.message||e)+(e.name==="EncodingError"?"（这个文件浏览器读不了，换 mp3 试试）":"")); }
+  finally{ if(BP) BP.busy=false; $("arrBox").hidden=true; document.title="落键练琴"; }
 }
 function newSong(title,notes,colors){
   if(notes.some(n=>!n.f)) PV.fingering(notes);
@@ -881,6 +917,6 @@ function micFrame(now){
 }
 function micHud(t){ const el=$("micHud"); if(el.textContent!==t) el.textContent=t; }
 
-renderLib();
+renderLib(); arrUI();
 </script>
 </body></html>
