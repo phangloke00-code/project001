@@ -106,4 +106,15 @@ assert.deepStrictEqual(back.map(n => n.v), [1, .5, .8]); // velocity kept (to 1/
   const k2 = PV.stripeShift(rows, times, W, keys, notes);
   assert.ok(Math.abs(k2[0].x - keys[0].x - 4) < .6 && k2[1].x === keys[1].x, "shift " + (k2[0].x - keys[0].x)); }
 
+{ // pedalMarks: chord 1 rings into chord 2 briefly -> change; overlapping long ring -> one pedal; dry notes -> none
+  const pm = PV.pedalMarks([{t: 0, d: .5, s: 1}, {t: 0, d: .5, s: 1}, {t: 1.4, d: .5, s: .8}, {t: 1.6, d: .3, s: 1.5}, {t: 5, d: .4, s: 0}]); // no left-hand notes -> no bass changes
+  assert.deepStrictEqual(pm.map(x => x.map(v => +v.toFixed(2))), [[0, 1.4], [1.4, 3.4]]); }
+{ // MIDI sustain pedal (CC64) -> n.s
+  const b = [0x4d,0x54,0x68,0x64,0,0,0,6,0,0,0,1,0,96, 0x4d,0x54,0x72,0x6b,0,0,0,0];
+  const ev = [0,0x90,60,80, 0,0xb0,64,127, 48,0x80,60,0, 0,0x90,62,80, 48,0x80,62,0, 48,0xb0,64,0, 0,0xff,0x2f,0];
+  b.push(...ev); b[21] = ev.length; const ns = PV.fromMidi(new Uint8Array(b).buffer);
+  assert.deepStrictEqual(ns.map(n => n.s), [.5, .3]); } // 120 BPM: pedal up at .75 s
+{ // bass change splits a long pedal
+  const pm = PV.pedalMarks([{t: 0, d: 4, s: 1, m: 48, h: "L"}, {t: 2, d: 2, s: 1, m: 43, h: "L"}]);
+  assert.deepStrictEqual(pm, [[0, 2], [2, 5]]); }
 console.log("core ok");

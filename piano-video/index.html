@@ -38,7 +38,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.6 · 11-04</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v2.7 · 11-05</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -134,7 +134,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=2.6"></script>
+<script src="core.js?v=2.7"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -571,6 +571,7 @@ function range(){ if(S.full) return [21,108]; let lo=108,hi=21; S.song.notes.for
   lo=Math.max(21,lo-lo%12); hi=Math.min(108,hi+(12-hi%12)%12); if(hi-lo<24) hi=Math.min(108,lo+24); return [lo,hi]; }
 function rr(x,y,w,h,r){ r=Math.min(r,w/2,h/2); cx.beginPath(); cx.roundRect?cx.roundRect(x,y,w,h,r):cx.rect(x,y,w,h); }
 const SP=[]; // 碎光点
+const PEDM=new WeakMap(), pedOf=s=>{ if(!PEDM.has(s)) PEDM.set(s,PV.pedalMarks(s.notes)); return PEDM.get(s); };
 function draw(now){
   const dpr=devicePixelRatio||1, W=Math.round(cv.clientWidth*dpr), H=Math.round(cv.clientHeight*dpr);
   if(!W||!H) return; if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}
@@ -590,6 +591,13 @@ function draw(now){
     for(let k=Math.ceil((t-bt.t0)/bt.p);bt.t0+k*bt.p<t+LA;k++){ const y=top-(bt.t0+k*bt.p-t)*pps, bar=((k%4)+4)%4===0; cx.fillStyle=bar?"#ffffff30":"#ffffff0d"; cx.fillRect(0,y,W,dpr*(bar?1.5:1));
       if(bar){ cx.fillStyle="#ffffff70"; cx.fillText(String(k/4+1),4*dpr,y-2*dpr); } } }
   else for(let s=Math.ceil(t);s<t+LA;s++){ const y=top-(s-t)*pps; cx.fillRect(0,y,W,dpr*(s%5?1:1.5)); }
+  // 踏板提示：右边一条琥珀色的道，有颜色的地方踩住；断开的地方是换踏板（抬起再踩），"踩"字是踩下的时刻
+  const pm=pedOf(S.song); let ped=false;
+  if(pm.length){ cx.font=`700 ${Math.round(11*dpr)}px sans-serif`; cx.textAlign="right"; cx.textBaseline="bottom";
+    for(const [a,b] of pm){ if(a>t+LA) break; if(b<t) continue; if(a<=t) ped=true;
+      const y0=Math.max(0,top-(b-t)*pps), y1=Math.min(top,top-(a-t)*pps);
+      cx.fillStyle="#f5b84299"; cx.fillRect(W-5*dpr,y0,5*dpr,Math.max(0,y1-y0-2*dpr));
+      if(a>=t){ cx.fillStyle="#f5b842"; cx.fillText("踩",W-7*dpr,y1-dpr); } } }
   // 下落的音符
   const rects=[], active=new Map(); cx.textAlign="center"; cx.textBaseline="middle"; cx.font=`700 ${Math.round(Math.min(ww*.7,15*dpr))}px sans-serif`;
   for(const n of S.song.notes){
@@ -643,7 +651,7 @@ function draw(now){
     if(want.size){ cx.strokeStyle=col(n.h,60,.6+.4*Math.sin(now/130)); cx.lineWidth=3*dpr; rr(k.x-k.w/2+dpr,top+dpr,k.w-2*dpr,(k.black?kbH*.63:kbH)-2*dpr,3*dpr); cx.stroke(); }
     if(S.fing&&n.f){ cx.fillStyle="#000a"; cx.beginPath(); cx.arc(k.x,y,Math.min(k.w*.42,10*dpr),0,7); cx.fill(); cx.fillStyle="#fff"; cx.fillText(n.f,k.x,y+dpr*.5); } }
   S.L={dpr,keys,top,kbH,rects};
-  const hud=`${fmt(t)} / ${fmt(S.song.dur)}`+(bt?`  · 第 ${Math.max(1,PV.barOf(bt,t+.1))} 小节 · ${bt.bpm} BPM`:"")+(want.size&&S.waiting?`   等你弹：${[...want.values()].map(n=>PV.nameOf(n.m)+(n.f?"("+n.f+"指)":"")).join("  ")}`:"")+(S.rec?`   ✓${S.rec.hits}  ✗${S.rec.wrong}${S.mode==="follow"?"  漏"+S.rec.miss:""}`:"");
+  const hud=`${fmt(t)} / ${fmt(S.song.dur)}`+(bt?`  · 第 ${Math.max(1,PV.barOf(bt,t+.1))} 小节 · ${bt.bpm} BPM`:"")+(ped?"  · 🦶踏板":"")+(want.size&&S.waiting?`   等你弹：${[...want.values()].map(n=>PV.nameOf(n.m)+(n.f?"("+n.f+"指)":"")).join("  ")}`:"")+(S.rec?`   ✓${S.rec.hits}  ✗${S.rec.wrong}${S.mode==="follow"?"  漏"+S.rec.miss:""}`:"");
   if($("hud").textContent!==hud) $("hud").textContent=hud;
   if(!$("seek").matches(":active")) $("seek").value=t; const tm=fmt(t); if($("tm").textContent!==tm) $("tm").textContent=tm;
 }
