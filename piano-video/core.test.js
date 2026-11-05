@@ -66,6 +66,28 @@ const cols = PV.assignHands(notes);
 assert.deepStrictEqual(notes.map(n => n.h), ["L", "R", "L"]);
 assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
 
+// four colors (Falling Tears): red bass + white chords = left hand, cyan + pink voices = right hand
+{ const ns = [], add = (hue, ms) => { for (let i = 0; i < 20; i++) ns.push({m: ms[i % ms.length], t: i, d: .2, hue}); };
+  add(5, [41, 48, 55]); add(60, [55, 59, 63]); add(185, [69, 72, 75]); add(320, [72, 77, 81]); // average pitches as measured
+  const c = PV.assignHands(ns);
+  assert.deepStrictEqual([5, 60, 185, 320].map(h => ns.find(n => n.hue === h).h), ["L", "L", "R", "R"]);
+  assert.ok(PV.hueDist(c.L, 5) < 15 && PV.hueDist(c.R, 185) < 15); }
+
+// bright busy background + white/whitish bars (TOYOKI Falling Tears): the default rule lights the wood (v .45, s .3) as a
+// note; paleNotes' brightness rule drops it, sees white and whitish-pink bars, and cuts repeated notes at the dim glow between bars
+{ const WOOD = [110, 93, 77], row = paint => { const d = rowOf(paint); for (let x = 0; x < 1040; x++) if (d[x * 4] === 60) d.set([...WOOD, 255], x * 4); return d; };
+  const pk = (d, m, v = .7) => PV.sampleKeys(d, 1040, keys, v, .25, v)[keys.indexOf(K(m))];
+  assert.ok(lit(row(() => {}), 60) >= 0); // the old rule: a ghost note everywhere
+  assert.strictEqual(pk(row(() => {}), 60), -1);
+  assert.strictEqual(pk(row(f => f(K(60).x - 8, K(60).x + 8, [250, 249, 238])), 60), 60); // white bar = hue 60
+  assert.ok(PV.hueDist(pk(row(f => f(K(60).x - 8, K(60).x + 8, [218, 189, 203])), 60), 330) < 20); // whitish pink keeps its hue
+  const BAR = [255, 170, 150], GLOW = [194, 74, 72], line = [], ups = [], T = [];
+  const seq = [0, 0, 1, 1, 1, 1, 2, 1, 1, 1, 1, 0, 0, 0, 3, 0, 0]; // 1 bar, 2 glow between two repeated bars, 3 a one-frame spark
+  seq.forEach((c, i) => { T.push(i / 30); line.push(row(f => c && f(K(60).x - 8, K(60).x + 8, [0, BAR, GLOW, BAR][c])));
+    ups.push(row(f => (seq[i + 2] || seq[i + 3]) && f(K(60).x - 8, K(60).x + 8, BAR))); });
+  const ns = PV.paleNotes(T, line, ups, 1040, keys);
+  assert.deepStrictEqual(ns.map(n => [n.m, Math.round(n.t * 30), Math.round(n.d * 30)]), [[60, 2, 5], [60, 7, 4]]); } // the glow frame stays with the first note; the spark is gone
+
 // fingering: C major triad RH 1-3-5, LH 5-3-1; scale RH has no illegal crossings
 const chord = h => [60, 64, 67].map(m => ({m, t: 0, d: 1, h}));
 assert.deepStrictEqual(PV.fingering(chord("R")).map(n => n.f), [1, 3, 5]);

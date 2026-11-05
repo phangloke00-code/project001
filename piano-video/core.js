@@ -51,13 +51,18 @@ function circMean(hs) {
 // One row of RGBA pixels -> hue per key (-1 = nothing). A key is lit when the pixel at its center is a bright colored bar
 // (the falling-area background is dark/grey). For a black key the lit stretch around it must also be narrow:
 // white-key bars are often as wide as the key and reach right up to the black key's center.
-function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
+// pale (optional): pale/white pixels this bright count too (videos with white or whitish-pink bars; see paleNotes)
+function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = 2) {
   const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4; return hsv(d[i], d[i + 1], d[i + 2]); };
-  const lit = p => p[1] >= sMin && p[2] >= vMin, ww = keys.find(k => !k.black).w;
+  const pl = p => p[1] < sMin, lit = p => p[2] >= vMin && (!pl(p) || p[2] >= pale), ww = keys.find(k => !k.black).w;
   return Int16Array.from(keys, (k, i) => {
     const c = px(k.x); if (!lit(c)) return -1;
     // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
-    const same = p => lit(p) && hueDist(p[0], c[0]) < 30;
+    const same = p => lit(p) && (pl(p) || pl(c) || hueDist(p[0], c[0]) < 30); // a pale pixel's hue is noise
+    // a pale bar's color = its most saturated pale pixel (not a neighbour's glow); (almost) none = a white bar, hue 60
+    // shortcut: white bars share hue 60 with yellow ones, fine until a video has both
+    const hue = () => { if (!pl(c)) return Math.round(c[0]); let b = [60, 0];
+      for (let x = k.x - l; x <= k.x + r; x++) { const p = px(x); if (pl(p) && lit(p) && p[1] > b[1]) b = p; } return b[1] >= .1 ? Math.round(b[0]) : 60; };
     let l = 0, r = 0; while (r < 2 * ww && same(px(k.x + r + 1))) r++; while (l < 2 * ww && same(px(k.x - l - 1))) l++;
     const len = l + r + 1, wide = len >= .8 * ww, mid = k.x + (r - l) / 2;
     if (len < .3 * ww) return -1; // too narrow: a stray edge pixel, not a bar
@@ -69,12 +74,12 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
       if (Math.min(l, r) < .2 * ww) return -1;
       const wn = [keys[i - 1], keys[i + 1]].find(w => w && !w.black && w.x >= k.x - l && w.x <= k.x + r), vw = wn && px(wn.x)[2];
       const dark = wn && len < 1.6 * ww && [-2, -1, 0, 1, 2].every(o => { const p = px(k.x + o); return same(p) && p[2] < .85 * vw; });
-      return dark ? Math.round(c[0]) : -1;
+      return dark ? hue() : -1;
     }
     // a narrow stretch belongs to whichever key its middle is nearest: a narrow bar centered on the black key next door is
     // that black key's note, and the rounded (narrower) end of a white bar is not the black key next to it
     const nb = [keys[i - 1], keys[i + 1]].find(b => b && b.black !== k.black && Math.abs(mid - b.x) < Math.abs(mid - k.x));
-    return !wide && nb ? -1 : Math.round(c[0]);
+    return !wide && nb ? -1 : hue();
   });
 }
 
@@ -82,7 +87,7 @@ function sampleKeys(d, width, keys, vMin = .4, sMin = .25) {
 // A jump of more than maxGap seconds between frames (browser skipped frames) ends every run, so no note is stretched across it.
 // upper (optional): the same samples from a line a little higher up. A falling bar lights that line first; a title,
 // watermark or glow that sits still lights both at once, so a note with no earlier light above it is dropped.
-function extractNotes(times, frames, keyMs, maxGap = .25, upper = null) {
+function extractNotes(times, frames, keyMs, maxGap = .25, upper = null, split = 40) {
   const notes = [], N = times.length;
   for (let k = 0; k < keyMs.length; k++) {
     let s = -1, hs = [];
@@ -95,7 +100,7 @@ function extractNotes(times, frames, keyMs, maxGap = .25, upper = null) {
       const h = frames[i][k];
       if (s >= 0 && times[i] - times[i - 1] > maxGap) close(i, times[i - 1] + .03);
       if (h < 0) { if (s >= 0) close(i); continue; }
-      if (s >= 0 && hueDist(h, hs[0]) > 40) close(i); // color change with no gap = other hand took over the key
+      if (s >= 0 && hueDist(h, hs[0]) > split) close(i); // color change with no gap = other hand took over the key (split 180 = off: pale bars' hue is noise)
       if (s < 0) s = i;
       hs.push(h);
     }
@@ -106,6 +111,24 @@ function extractNotes(times, frames, keyMs, maxGap = .25, upper = null) {
   const ghost = b => isBlack(b.m) && b.d <= .07 && notes.some(w => !isBlack(w.m) && Math.abs(w.m - b.m) === 1 &&
     hueDist(w.hue, b.hue) < 40 && w.t <= b.t + .001 && w.t + w.d >= b.t + b.d - .001);
   return notes.filter(n => !ghost(n)).sort((a, b) => a.t - b.t || a.m - b.m);
+}
+
+// Videos with white or whitish (pastel) bars over a bright, busy background (TOYOKI Falling Tears: wood/anime picture behind
+// see-through bars, red/white/cyan/pink voices). rows/ups = raw RGBA rows at the detection line / the line above it.
+// A pixel counts when bright (v >= vMin, default .7, whatever the color), so the background (v .4-.65) drops out and white
+// bars count; a one-frame flash (spark) is dropped. Repeated notes on one key are bars a few px apart joined by a dimmer glow (v ~.75, as bright
+// as a cyan bar), so a run is also cut where its bright core (v >= .82) goes out and comes back.
+function paleNotes(times, rows, ups, width, keys, vMin = .7) {
+  const km = keys.map(k => k.m), S = (rs, v) => rs.map(r => sampleKeys(r, width, keys, v, .25, v));
+  const loose = extractNotes(times, S(rows, vMin), km, .25, S(ups, vMin), 180);
+  const core = extractNotes(times, S(rows, Math.max(vMin, .82)), km, .25, null, 180), out = [];
+  for (const n of loose) {
+    if (times.filter(t => t >= n.t && t < n.t + n.d - .001).length < 2) continue; // one frame: a spark from a key being hit
+    const c = core.filter(q => q.m === n.m && q.t >= n.t - .001 && q.t + q.d <= n.t + n.d + .001);
+    if (c.length < 2) { out.push(n); continue; }
+    c.forEach((q, i) => { const t = i ? q.t : n.t, e = i < c.length - 1 ? c[i + 1].t : n.t + n.d; out.push({...n, t, d: +(e - t).toFixed(3)}); });
+  }
+  return out.sort((a, b) => a.t - b.t || a.m - b.m);
 }
 
 // Videos whose pressed keys light up: the key surface is a cleaner signal than the falling bars (hollow neon bars, sparks,
@@ -151,23 +174,32 @@ function stripeShift(rows, times, width, keys, notes) {
   return keys.map(k => ({...k, x: k.x + sh[k.black ? "b" : "w"]}));
 }
 
-// Two color clusters (2-means on the hue circle); the one with lower average pitch is the left hand.
+// Color clusters (k-means on the hue circle, up to 4 colors: some videos give each hand two voices, e.g. Falling Tears:
+// red bass + white chords = left, cyan + pink = right). Clusters sorted by average pitch; the hands split at the biggest
+// jump in average pitch (with two colors: the lower one is the left hand).
 function assignHands(notes) {
   const res = {L: 95, R: 355};
   if (!notes.length) return res;
   const bins = new Array(36).fill(0); notes.forEach(n => bins[Math.floor(n.hue / 10) % 36]++);
-  let c1 = bins.indexOf(Math.max(...bins)) * 10 + 5, c2 = null, best = notes.length * .03;
-  bins.forEach((v, i) => { if (hueDist(i * 10 + 5, c1) >= 50 && v > best) { best = v; c2 = i * 10 + 5; } });
-  if (c2 == null) { notes.forEach(n => n.h = n.m < 60 ? "L" : "R"); res.L = res.R = c1; return res; } // one color only: split at middle C
-  for (let it = 0; it < 6; it++) {
-    const A = [], B = []; notes.forEach(n => (hueDist(n.hue, c1) <= hueDist(n.hue, c2) ? A : B).push(n.hue));
-    if (A.length) c1 = circMean(A); if (B.length) c2 = circMean(B);
+  let cs = [];
+  for (let k = 0; k < 4; k++) {
+    let c = null, best = k ? notes.length * .03 : -1;
+    bins.forEach((v, i) => { if (cs.every(q => hueDist(i * 10 + 5, q) >= 40) && v > best) { best = v; c = i * 10 + 5; } });
+    if (c == null) break; cs.push(c);
   }
-  let s1 = 0, n1 = 0, s2 = 0, n2 = 0;
-  notes.forEach(n => { n.c = hueDist(n.hue, c1) <= hueDist(n.hue, c2) ? 1 : 2; if (n.c === 1) { s1 += n.m; n1++; } else { s2 += n.m; n2++; } });
-  const oneIsLeft = s1 / (n1 || 1) < s2 / (n2 || 1);
-  notes.forEach(n => { n.h = (n.c === 1) === oneIsLeft ? "L" : "R"; delete n.c; });
-  res.L = Math.round(oneIsLeft ? c1 : c2); res.R = Math.round(oneIsLeft ? c2 : c1);
+  if (cs.length < 2) { notes.forEach(n => n.h = n.m < 60 ? "L" : "R"); res.L = res.R = cs[0]; return res; } // one color only: split at middle C
+  const near = h => cs.reduce((b, q, i) => hueDist(h, q) < hueDist(h, cs[b]) ? i : b, 0);
+  for (let it = 0; it < 6; it++) {
+    const g = cs.map(() => []); notes.forEach(n => g[near(n.hue)].push(n.hue));
+    cs = cs.map((c, i) => g[i].length ? circMean(g[i]) : c);
+  }
+  const cl = cs.map(c => ({c, n: 0, s: 0})); notes.forEach(n => { const q = cl[near(n.hue)]; n.c = q; q.n++; q.s += n.m; });
+  const used = cl.filter(q => q.n).sort((a, b) => a.s / a.n - b.s / b.n);
+  let cut = 1; for (let i = 2; i < used.length; i++) if (used[i].s / used[i].n - used[i - 1].s / used[i - 1].n > used[cut].s / used[cut].n - used[cut - 1].s / used[cut - 1].n) cut = i;
+  used.forEach((q, i) => q.h = i < cut ? "L" : "R");
+  notes.forEach(n => { n.h = n.c.h; delete n.c; });
+  const big = h => used.filter(q => q.h === h).sort((a, b) => b.n - a.n)[0].c;
+  res.L = Math.round(big("L")); res.R = Math.round(big("R"));
   return res;
 }
 
@@ -395,6 +427,6 @@ function arrange(raw, style = "full") {
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, extractNotes, paleNotes, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);
