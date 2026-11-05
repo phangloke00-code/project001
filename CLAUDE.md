@@ -42,7 +42,7 @@
 
 1. **版本号三处一起改**：`index.html` 标题里的 `vX.Y · 日期`、`core.js?v=X.Y`、`sw.js` 里的 `C = "pv-X.Y"`。
 2. 跑 `node piano-video/core.test.js`。
-3. 提交，推到工作分支，用户要求时再推到默认分支 `claude/inspiring-gates-gza3ne`（这个仓库没有 `main`）。
+3. 提交，推到工作分支，**每次都同时推到默认分支** `claude/inspiring-gates-gza3ne`（用户要求的；手机用的 GitHub Pages 从这里发布；这个仓库没有 `main`）。
 4. 更新网页：claude.ai 上的 artifact **落键练琴** https://claude.ai/artifact/3PMPNWuorkYQP8EuMEYQdZ 。
    用 Artifact 工具：先 `read` 这个 url，再 publish，`url` 填它，`file_path` = `piano-video/index.html`，`files` = `{"core.js": "piano-video/core.js"}`（piano/ 和 lib/ 已经在上面，没改就不用重传）。
    嵌在 claude.ai 里的页面不能下载文件、不能用麦克风，页面里已经有提示（让用户用 GitHub Pages / 本地 server.py 版本）。
