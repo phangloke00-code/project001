@@ -101,7 +101,11 @@ function extractNotes(times, frames, keyMs, maxGap = .25, upper = null) {
     }
     if (s >= 0) close(N);
   }
-  return notes.sort((a, b) => a.t - b.t || a.m - b.m);
+  // a black key lit for a frame or two, wholly inside the same-colored note on the white key next to it, is that bar's
+  // edge/outline, not a note: real bars stay on the line for several frames (失眠的夜 bar 28: A3 + a 1-frame G#3)
+  const ghost = b => isBlack(b.m) && b.d <= .07 && notes.some(w => !isBlack(w.m) && Math.abs(w.m - b.m) === 1 &&
+    hueDist(w.hue, b.hue) < 40 && w.t <= b.t + .001 && w.t + w.d >= b.t + b.d - .001);
+  return notes.filter(n => !ghost(n)).sort((a, b) => a.t - b.t || a.m - b.m);
 }
 
 // Videos whose pressed keys light up: the key surface is a cleaner signal than the falling bars (hollow neon bars, sparks,

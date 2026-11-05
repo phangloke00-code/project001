@@ -58,6 +58,10 @@ assert.deepStrictEqual(PV.extractNotes([0, .1, 5.1, 5.2], [[G], [G], [G], [-1]],
 // with an upper line: a bar seen above first is kept; something lit on both lines at once (static title) is dropped
 const lower = [[-1, G], [G, G], [G, G], [-1, -1]], up = [[G, G], [G, G], [-1, G], [-1, -1]];
 assert.deepStrictEqual(PV.extractNotes([0, .1, .2, .3], lower, [60, 62], .25, up).map(n => n.m), [60]);
+// 1-frame black key inside the same-hand white note next to it = that bar's edge (失眠的夜 bar 28: A3 + ghost G#3); a real one stays
+{ const T = [0, .033, .067, .1, .133, .167], fr = [[-1, -1], [-1, 75], [70, 75], [-1, 75], [-1, -1], [-1, -1]];
+  assert.deepStrictEqual(PV.extractNotes(T, fr, [56, 57]).map(n => n.m), [57]);
+  assert.deepStrictEqual(PV.extractNotes(T, [[-1, -1], [70, 75], [70, 75], [70, 75], [70, -1], [-1, -1]], [56, 57]).map(n => n.m).sort(), [56, 57]); }
 const cols = PV.assignHands(notes);
 assert.deepStrictEqual(notes.map(n => n.h), ["L", "R", "L"]);
 assert.ok(PV.hueDist(cols.L, G) < 2 && PV.hueDist(cols.R, R) < 2);
