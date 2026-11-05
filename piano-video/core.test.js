@@ -49,6 +49,12 @@ assert.strictEqual(lit(px, 70), -1);
 // user's Chrome got 1-2 px wider edges than ours) is still that black key's note: only the bright core says how wide a bar is
 { const x0 = Math.round(K(49).x), row = rowOf(f => { f(x0 - 8, x0 + 9, [130, 80, 80]); f(x0 - 4, x0 + 5, [235, 100, 98]); });
   assert.ok(PV.hueDist(lit(row, 49), 0) < 10); assert.strictEqual(lit(row, 48), -1); assert.strictEqual(lit(row, 50), -1); }
+// 失眠的夜 DJ: right after a green bar, the hit's whitish-pink glow (sat .11, v .58, background hue) lies on the line for a
+// few frames; with the background known it is not a (pink, 1-frame) note
+{ const fill = rgb => { const d = new Uint8ClampedArray(1040 * 4); for (let x = 0; x < 1040; x++) d.set([...rgb, 255], x * 4); return d; };
+  const rows = Array.from({length: 40}, () => fill([79, 64, 66])), r = rows[20] = fill([79, 64, 66]), x0 = Math.round(K(50).x);
+  for (let x = x0 - 20; x <= x0 + 20; x++) r.set([148, 132, 135, 255], x * 4);
+  assert.strictEqual(PV.sampleKeys(r, 1040, keys, .4, .25, null, PV.lineBg(rows)[20])[keys.indexOf(K(50))], -1); }
 // A#4 center right on the soft (darker) edge of a full-width B4 bar: still not lit
 px = rowOf(f => { f(K(71).x - 10, K(71).x + 10, LIGHT); f(K(70).x - 1, K(70).x + 1, DARK); });
 assert.strictEqual(lit(px, 70), -1);

@@ -60,13 +60,18 @@ function circMean(hs) {
 function sampleKeys(d, width, keys, vMin = .4, sMin = .25, pale = null, bg = null) {
   const px = x => { const i = Math.max(0, Math.min(width - 1, Math.round(x))) * 4, p = hsv(d[i], d[i + 1], d[i + 2]);
     if (bg) { const b = hsv(bg[i], bg[i + 1], bg[i + 2]); // same hue, no more saturated = white light over the background (glow)
-      p.bg = b[2] < .5 && p[1] >= .07 && p[2] > b[2] + .1 && Math.hypot(d[i] - bg[i], d[i + 1] - bg[i + 1], d[i + 2] - bg[i + 2]) >= 40 &&
-        !(hueDist(p[0], b[0]) < 25 && p[1] <= b[1] + .02); }
+      // glow = white light added over the background: every channel goes up by about the same amount (glows measured 1-5%,
+      // a greyish lilac bar 16%: Are You Lost)
+      const dr = d[i] - bg[i], dg = d[i + 1] - bg[i + 1], db = d[i + 2] - bg[i + 2], dm = (dr + dg + db) / 3;
+      p.glow = dm > 0 && Math.max(dr, dg, db) - Math.min(dr, dg, db) <= .14 * dm;
+      p.bg = b[2] < .5 && p[1] >= .07 && p[2] > b[2] + .1 && Math.hypot(d[i] - bg[i], d[i + 1] - bg[i + 1], d[i + 2] - bg[i + 2]) >= 40 && !p.glow; }
     return p; };
   const auto = pale == null;
+  // a pale pixel by the row-median rule must not be glow either (失眠的夜 DJ: a hit's whitish-pink glow right after each green
+  // bar, background hue and less saturated, became a pink 1-frame note on the same key)
   if (auto) { const hist = new Uint32Array(256); for (let x = 0; x < width; x++) hist[Math.max(d[x * 4], d[x * 4 + 1], d[x * 4 + 2])]++;
     let med = 0; for (let n = 0; n <= width / 2; med++) n += hist[med]; med = (med - 1) / 255; pale = med < .5 ? Math.max(vMin, med + .2) : 2; }
-  const pl = p => p[1] < sMin, lit = p => p.bg || p[2] >= vMin && (!pl(p) || p[2] >= pale && (!auto || p[1] >= .1)), ww = keys.find(k => !k.black).w;
+  const pl = p => p[1] < sMin, lit = p => p.bg || p[2] >= vMin && (!pl(p) || p[2] >= pale && (!auto || p[1] >= .1 && !p.glow)), ww = keys.find(k => !k.black).w;
   return Int16Array.from(keys, (k, i) => {
     const c = px(k.x); if (!lit(c)) return -1;
     // measure the lit stretch by color only: a key's center often sits on the soft edge of a neighbour's bar
