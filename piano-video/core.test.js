@@ -217,4 +217,20 @@ assert.deepStrictEqual(back.map(n => n.v), [1, .5, .8]); // velocity kept (to 1/
   const low = PV.arrange(mel.map((m, i) => ({t: i * q, d: q * .9, m: m - 12, v: .8})), "full");
   assert.deepStrictEqual(low.filter(n => n.h === "R").map(n => n.m), mel);
 }
+// audioCheck: finds a big time offset + half-semitone tuning, flags a ghost note and a missed note, ignores an octave overtone
+{
+  const notes = [0, 1, 2, 3, 4, 5, 6, 7].map(i => ({t: 2 + i * .5, d: .4, m: 60 + (i % 4) * 2}));
+  notes.push({t: 3.2, d: .3, m: 70}); // ghost: nothing in the audio
+  const aud = notes.slice(0, 8).map(n => ({t: n.t + 7.3, d: .4, m: n.m + 1, v: .6}));
+  aud.push({t: 2.5 + 7.3, d: .3, m: 62 + 12 + 1, v: .7}); // overtone of the note at 2.5
+  aud.push({t: 4.75 + 7.3, d: .3, m: 55 + 1, v: .7});     // a real note we missed
+  aud.push({t: 5 + 7.3, d: .3, m: 50 + 1, v: .2});         // too quiet to trust
+  aud.push({t: 4.74 + 7.3, d: .3, m: 67 + 1, v: .6});      // overtone of the missed note, starting a hair earlier
+  aud.push({t: 2.42 + 7.3, d: .25, m: 60 + 1, v: .6});     // fading tail of the note at 2.0 split off by Basic Pitch
+  const r = PV.audioCheck(notes, aud);
+  assert.strictEqual(r.shift, -1); assert.ok(Math.abs(r.off - 7.3) < .03, r.off);
+  assert.deepStrictEqual(r.extra, [8]);
+  assert.deepStrictEqual(r.ghosts.map(g => g.m), [55]); assert.ok(Math.abs(r.ghosts[0].t - 4.75) < .03);
+}
+
 console.log("core ok");

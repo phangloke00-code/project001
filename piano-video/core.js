@@ -490,9 +490,32 @@ function arrange(raw, style = "full") {
   }
   return [...mel, ...lh].sort((a, b) => a.t - b.t || a.m - b.m);
 }
+// Compare recognized notes with notes transcribed from the video's own sound (Basic Pitch, aud = [{t,d,m,v}] in audio time).
+// Finds the time offset (any size: song times are shifted) and a tuning shift (-1/0/+1: some videos are off by ~half a semitone)
+// by voting over same-pitch pairs. Returns off (audio t = note t + off), shift, extra = note indices nothing in the audio
+// matches, ghosts = confident audio notes ({t,d,m} in note time) with no recognized note, harmonics of played notes left out.
+function audioCheck(notes, aud, tol = .12) {
+  let best = {votes: 0, off: 0, shift: 0};
+  for (const shift of [0, -1, 1]) {
+    const by = new Map(); for (const a of aud) { const k = a.m + shift; if (!by.has(k)) by.set(k, []); by.get(k).push(a.t); }
+    const bins = new Map(); for (const n of notes) for (const t of by.get(n.m) || []) { const b = Math.round((t - n.t) / .02); bins.set(b, (bins.get(b) || 0) + 1); }
+    for (const [b, c] of bins) { const v = c + (bins.get(b - 1) || 0) + (bins.get(b + 1) || 0); if (v > best.votes) best = {votes: v, off: b * .02, shift}; }
+  }
+  const {off, shift} = best, A = aud.map(a => ({t: a.t - off, d: a.d, m: a.m + shift, v: a.v})).sort((a, b) => a.t - b.t);
+  const near = (arr, t, f) => { let lo = 0, hi = arr.length; while (lo < hi) { const md = (lo + hi) >> 1; if (arr[md].t < t - 4) lo = md + 1; else hi = md; } // 4 s back: long notes
+    for (let i = lo; i < arr.length && arr[i].t <= t + .4; i++) if (f(arr[i])) return true; return false; };
+  const N = notes.slice().sort((a, b) => a.t - b.t);
+  const extra = []; notes.forEach((n, i) => { if (!near(A, n.t, a => a.m === n.m && Math.abs(a.t - n.t) < tol + .03)) extra.push(i); });
+  const HARM = [12, 19, 24, 28, 31];
+  // explained by a note: same pitch at the same time, its tail (Basic Pitch splits a fading note in two), or an overtone of it
+  const why = (arr, a) => near(arr, a.t, n => n.m === a.m && a.t > n.t - tol - .03 && a.t <= n.t + n.d + .12 || HARM.includes(a.m - n.m) && n.t <= a.t + .1 && n.t + n.d >= a.t - .05);
+  const cand = A.filter(a => a.v >= .35 && a.d >= .1 && a.t >= 0 && !why(N, a)), ghosts = [];
+  for (const a of cand) if (!why(ghosts, a) && !why(cand.filter(c => c !== a && HARM.includes(a.m - c.m)), a)) ghosts.push({t: +a.t.toFixed(3), d: +a.d.toFixed(3), m: a.m});
+  return {off: +off.toFixed(2), shift, extra, ghosts, matched: notes.length - extra.length};
+}
 const barOf = (g, t) => Math.floor((t - g.t0) / (g.p * g.bpb) + 1e-6) + 1; // bar number (1 = the bar starting at t0)
 const barTime = (g, b) => g.t0 + (b - 1) * g.p * g.bpb;
 
-const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, lineBg, extractNotes, paleNotes, keyColors, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange};
+const PV = {isBlack, nameOf, NAMES, layout, detectBlacks, hsv, hueDist, sampleKeys, lineBg, extractNotes, paleNotes, keyColors, assignHands, groupByOnset, fingering, toMidi, fromMidi, bandAmp, alignAudio, audioDynamics, beatGrid, barOf, barTime, barHues, barHueNotes, fragFrac, useKeys, stripeShift, pedalMarks, arrange, audioCheck};
 if (typeof module !== "undefined") module.exports = PV; else G.PV = PV;
 })(typeof window !== "undefined" ? window : globalThis);

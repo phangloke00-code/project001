@@ -22,6 +22,7 @@ main>section{padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-l
 .muted{color:var(--muted)} .mono{font-family:ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg button{border:0;border-radius:0;min-height:32px}
 .song{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}.song b{flex:1;min-width:140px}
+.song .st{flex:1;min-width:0;display:flex;flex-direction:column}.song .st b{flex:none}.song .st .muted{font-size:12px}
 canvas{display:block;max-width:100%}
 #calCv{width:100%;border-radius:8px;background:#000}
 /* 练习画面：固定一屏，画面占满，下面一条小 bar，其它设置收在 ☰ 里 */
@@ -63,7 +64,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.14 · 11-05</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.15 · 11-07</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -82,9 +83,9 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <div class="row"><input id="songFile" type="file" accept="audio/*,video/*" hidden><button class="pri" data-act="pickSong">选择歌曲文件</button><button data-act="ytSong">用上面的 YouTube 链接</button></div>
     <div id="arrMsg" class="muted"></div><div class="bar" id="arrBox" hidden><i id="arrBar"></i></div>
   </div>
-  <div class="card"><h2>我的曲子</h2><div id="songList"></div>
+  <div class="card" id="myCard"><h2>我的曲子</h2><div id="songList"></div>
     <div class="row" style="margin-top:8px"><button data-act="backup">💾 备份全部（曲子 + 练习记录）</button><input id="bak" type="file" accept=".json,application/json" hidden><button data-act="restore">📂 从备份恢复</button>
-    <span class="muted">曲子只存在这个浏览器里，清除浏览器数据就没了；换手机/电脑时也用备份文件搬过去。</span></div></div>
+    <span class="muted">曲子只存在这个浏览器里，清除浏览器数据就没了；换手机/电脑时也用备份文件搬过去。<br><span id="useV"></span></span></div></div>
 </section>
 
 <!-- ================= 校准 + 识别 ================= -->
@@ -123,6 +124,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
     <div id="ov"><div id="ebar" hidden>
         <button class="ic" data-act="undo" id="undoBtn" aria-label="撤销" title="撤销 (Ctrl+Z)">↶</button><button class="ic" data-act="redo" id="redoBtn" aria-label="重做" title="重做 (Ctrl+Y)">↷</button><i></i>
         <button data-act="eAdd" title="在选中的音后面加一个音">＋音</button><button class="es" data-act="eHand" title="换左/右手">换手</button><button class="es" data-act="eFing" title="指法 1–5">指法</button><button class="es ic" data-act="eDel" aria-label="删除" title="删除 (Delete)">🗑</button><i></i>
+        <button class="ic" data-act="chk" aria-label="用声音检查" title="用原视频的声音检查认错的音">🔍</button><button data-act="chkNext" id="chkNext" title="跳到下一个可疑的地方" hidden></button><input id="chkFile" type="file" accept="video/*,audio/*" hidden><i></i>
         <button class="ic" data-act="vers" aria-label="版本记录" title="版本记录 / 恢复原始">🕘</button><button class="pri" data-act="edit">完成</button></div>
       <b id="pTitle"></b><div id="hud" class="mono"></div><div id="micHud" class="mono"></div></div>
     <div id="sum"></div></div>
@@ -175,7 +177,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=3.14"></script>
+<script src="core.js?v=3.15"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -187,9 +189,26 @@ const inFrame=(()=>{try{return window.self!==window.top;}catch(e){return true;}}
 if(!inFrame&&"serviceWorker" in navigator&&location.protocol!=="file:") navigator.serviceWorker.register("sw.js").catch(()=>{}); // 装到主屏幕 + 离线可用
 try{ if(history.state?.pv) history.replaceState(null,""); }catch(e){} // 重新载入时停在曲库
 addEventListener("popstate",()=>show(history.state?.pv||"lib",true));
-const store={get(k,d){try{const v=localStorage.getItem("pv-"+k);return v?JSON.parse(v):d;}catch(e){return d;}},
-  set(k,v){try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}}};
-let songs=store.get("songs",[]);
+// 曲子/版本/练习记录很大，放 IndexedDB（几百 MB）；读写走内存缓存，所以 store 仍是同步的。小设置留在 localStorage。
+const BIG=k=>/^(songs$|ver-|orig-|att-)/.test(k), CACHE=new Map(); let DB=null;
+const idb=(mode,f)=>new Promise((ok,no)=>{ const tx=DB.transaction("kv",mode); const r=f(tx.objectStore("kv")); tx.oncomplete=()=>ok(r?.result); tx.onerror=tx.onabort=()=>no(tx.error); });
+const store={get(k,d){ if(BIG(k)&&DB) return CACHE.has(k)?structuredClone(CACHE.get(k)):d;
+    try{const v=localStorage.getItem("pv-"+k);return v?JSON.parse(v):d;}catch(e){return d;}},
+  set(k,v){ if(BIG(k)&&DB){ v=structuredClone(v); CACHE.set(k,v); idb("readwrite",o=>o.put(v,k)).catch(e=>toast("保存失败："+(e?.name==="QuotaExceededError"?"存储空间满了":e?.message||e))); return true; }
+    try{localStorage.setItem("pv-"+k,JSON.stringify(v));return true;}catch(e){toast("保存失败：浏览器存储满了或被禁用");return false;}},
+  has(k){ if(BIG(k)&&DB) return CACHE.has(k); try{return localStorage.getItem("pv-"+k)!=null;}catch(e){return false;} },
+  del(k){ if(BIG(k)&&DB){ CACHE.delete(k); idb("readwrite",o=>o.delete(k)).catch(()=>{}); } try{localStorage.removeItem("pv-"+k);}catch(e){} }};
+// 打开 IndexedDB，读进缓存；第一次把旧版存在 localStorage 里的大数据搬过来（写成功后才删旧的）
+async function bootStore(){
+  try{ DB=await new Promise((ok,no)=>{ const q=indexedDB.open("pv",1); q.onupgradeneeded=()=>q.result.createObjectStore("kv"); q.onsuccess=()=>ok(q.result); q.onerror=()=>no(q.error); });
+    await idb("readonly",o=>{ const c=o.openCursor(); c.onsuccess=()=>{ const x=c.result; if(x){ CACHE.set(x.key,x.value); x.continue(); } }; });
+    const old=[]; for(let i=0;i<localStorage.length;i++){ const K=localStorage.key(i); if(K?.startsWith("pv-")&&BIG(K.slice(3))) old.push(K); }
+    if(old.length){ const mv=[]; for(const K of old){ try{ const k=K.slice(3); if(!CACHE.has(k)){ const v=JSON.parse(localStorage.getItem(K)); CACHE.set(k,v); mv.push([k,v]); } }catch(e){} }
+      await idb("readwrite",o=>{ for(const [k,v] of mv) o.put(v,k); }); for(const K of old) localStorage.removeItem(K); }
+    navigator.storage?.persist?.().catch(()=>{});
+  }catch(e){ console.warn("IndexedDB 不能用，退回 localStorage",e); DB=null; }
+}
+let songs=[];
 const saveSongs=()=>store.set("songs",songs.map(s=>({...s,notes:s.notes.map(({hit,miss,...n})=>n)})));
 function show(id,pop){
   if(!pop) try{ if(id==="lib"){ if(history.state?.pv) return history.back(); } else history[history.state?.pv?"replaceState":"pushState"]({pv:id},""); }catch(e){}
@@ -239,7 +258,7 @@ document.addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   if(b.dataset.go) return show(b.dataset.go);
   if(b.dataset.open!=null) return openSong(songs[+b.dataset.open]);
-  if(b.dataset.del!=null){ const i=+b.dataset.del; ask(`删除《${songs[i].title}》和它的练习记录？`).then(ok=>{ if(!ok) return; try{for(const k of ["att-","ver-","orig-"]) localStorage.removeItem("pv-"+k+songs[i].id);}catch(e){} songs.splice(i,1); saveSongs(); renderLib(); }); return; }
+  if(b.dataset.del!=null){ const i=+b.dataset.del; ask(`删除《${songs[i].title}》和它的练习记录？`).then(ok=>{ if(!ok) return; for(const k of ["att-","ver-","orig-"]) store.del(k+songs[i].id); songs.splice(i,1); saveSongs(); renderLib(); }); return; }
   if(b.dataset.ren!=null){ const s=songs[+b.dataset.ren]; ask("曲名",s.title).then(v=>{ if(v){s.title=v; saveSongs(); renderLib();} }); return; }
   if(b.dataset.rate) return setRate(b.dataset.rate);
   if(b.dataset.mode) return setMode(b.dataset.mode);
@@ -270,7 +289,8 @@ const ACT={
   mic:micToggle, stats:()=>show("stats"),
   refing:async()=>{ if(await ask("重新自动计算指法？你手动改过的指法会被覆盖。")){PV.fingering(S.song.notes);saveSongs();} },
   backup:()=>{ if(inFrame) return toast("这里不能下载文件。备份请用 GitHub Pages 打开的版本。");
-    const data={app:"落键练琴",ver:1,date:Date.now(),set:store.get("set",{}),songs:JSON.parse(localStorage.getItem("pv-songs")||"[]"),att:Object.fromEntries(songs.map(s=>[s.id,store.get("att-"+s.id,[])]))};
+    const data={app:"落键练琴",ver:1,date:Date.now(),set:store.get("set",{}),songs:store.get("songs",[]),att:Object.fromEntries(songs.map(s=>[s.id,store.get("att-"+s.id,[])])),
+      vers:Object.fromEntries(songs.map(s=>[s.id,store.get("ver-"+s.id,null)]).filter(x=>x[1])),orig:Object.fromEntries(songs.map(s=>[s.id,store.get("orig-"+s.id,null)]).filter(x=>x[1]))};
     const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));
     a.download=`piano-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.append(a); a.click(); a.remove(); toast(`已备份 ${data.songs.length} 首曲子`); },
   restore:()=>$("bak").click(),
@@ -283,6 +303,9 @@ const ACT={
   eFing:()=>{ if(!S.sel) return; pushUndo(); S.sel.f=(S.sel.f||0)%5+1; edited(); },
   eDel:()=>{ if(!S.sel) return; pushUndo(); S.song.notes.splice(S.song.notes.indexOf(S.sel),1); S.sel=null; edited(); },
   eAdd:()=>{ const b=S.sel; pushUndo(); const n={t:+(b?b.t+b.d:S.t+.5).toFixed(3),d:b?.d??.4,m:b?.m??60,h:b?.h??"R",f:b?.f,v:b?.v??.75}; S.song.notes.push(n); S.sel=n; edited(); tone(n.m,.3,.6); },
+  chk:()=>{ const src=SRC.get(S.song.id); if(src) return fetch(src).then(r=>r.blob()).then(audioCheck).catch(()=>$("chkFile").click()); $("chkFile").click(); },
+  chkNext:()=>{ const s=S.song, ts=[...s.notes.filter(n=>n.q).map(n=>n.t),...(s.ghosts||[]).map(g=>g.t)].sort((a,b)=>a-b); if(!ts.length) return;
+    const t=ts.find(t=>t>S.t+.6)??ts[0]; resetFrom(Math.max(0,t-1)); const n=s.notes.find(n=>n.q&&Math.abs(n.t-t)<.01); S.sel=n||null; ebarSync(); },
   vers:()=>{ ensureOrig(); renderVers(); $("verDlg").showModal(); },
   verSave:()=>{ saveVer("手动保存"); renderVers(); toast("已保存"); }, verClose:()=>$("verDlg").close(),
 };
@@ -296,7 +319,8 @@ $("file").onchange=async e=>{
 $("bak").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
   try{ const d=JSON.parse(await f.text()); if(d.app!=="落键练琴"||!Array.isArray(d.songs)) throw new Error("不是落键练琴的备份文件");
     let add=0; for(const s of d.songs){ if(!s?.id||!Array.isArray(s.notes)) continue; const i=songs.findIndex(x=>x.id===s.id); if(i<0){songs.push(s);add++;} else songs[i]=s;
-      const old=store.get("att-"+s.id,[]), seen=new Set(old.map(a=>a.date)); store.set("att-"+s.id,[...old,...(d.att?.[s.id]||[]).filter(a=>!seen.has(a.date))].sort((a,b)=>b.date-a.date).slice(0,60)); }
+      const old=store.get("att-"+s.id,[]), seen=new Set(old.map(a=>a.date)); store.set("att-"+s.id,[...old,...(d.att?.[s.id]||[]).filter(a=>!seen.has(a.date))].sort((a,b)=>b.date-a.date).slice(0,60));
+      if(Array.isArray(d.vers?.[s.id])) store.set("ver-"+s.id,d.vers[s.id]); if(Array.isArray(d.orig?.[s.id])) store.set("orig-"+s.id,d.orig[s.id]); }
     saveSongs(); renderLib(); toast(`已恢复 ${d.songs.length} 首（新增 ${add} 首）`);
   }catch(err){ toast("恢复失败："+err.message); } };
 async function loadYT(toPiano){
@@ -324,6 +348,17 @@ async function songToPiano(blob,title){
   if(BP?.busy) return toast("正在转换另一首，请稍等");
   const msg=t=>$("arrMsg").textContent=t, bar=$("arrBar"); $("arrBox").hidden=false; bar.style.width="0";
   try{
+    const raw=await transcribe(blob,msg,pc=>{ bar.style.width=pc+"%"; });
+    const notes=PV.arrange(raw,ARR); if(!notes.length) throw new Error("没扒到音符（这段音频可能是静音）");
+    const t0=notes[0].t-2; notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // 第一个音前留 2 秒
+    msg(""); newSong(title+(ARR==="raw"?"":" · 钢琴版"),notes,{L:95,R:355}); toast(`扒到 ${raw.length} 个音，编成 ${notes.length} 个。不对的地方用 ✎ 编辑改。`);
+  }catch(e){ console.warn(e); msg("转换失败："+(e.message||e)+(e.name==="EncodingError"?"（这个文件浏览器读不了，换 mp3 试试）":"")); }
+  finally{ $("arrBox").hidden=true; }
+}
+// Basic Pitch 扒谱：音频/视频文件 → [{t,d,m,v}]（点了才载入模型）
+async function transcribe(blob,msg,prog){
+  if(BP?.busy) throw new Error("正在扒另一首，请稍等");
+  try{
     msg("载入扒谱模型（第一次要下载约 1.7 MB）…");
     if(!window.BasicPitchLib) await new Promise((res,rej)=>{ const sc=document.createElement("script"); sc.src="lib/basic-pitch.min.js"; sc.onload=res; sc.onerror=()=>rej(new Error("扒谱模型载入失败，检查网络再试")); document.head.append(sc); });
     const B=BasicPitchLib; BP??={bp:new B.BasicPitch("lib/basic-pitch/model.json")}; BP.busy=true; await BP.bp.model;
@@ -331,23 +366,23 @@ async function songToPiano(blob,title){
     const au=await new OfflineAudioContext(1,1,22050).decodeAudioData(await blob.arrayBuffer()), x=au.getChannelData(0); // 模型要 22050 Hz 单声道
     if(au.numberOfChannels>1){ const y=au.getChannelData(1); for(let i=0;i<x.length;i++) x[i]=(x[i]+y[i])/2; }
     const fr=[],on=[], len=fmt(x.length/22050); B.tf.engine().startScope(); // 模型每段的中间结果不会自己释放：整段算完一起清掉
-    try{ await BP.bp.evaluateModel(x,(f,o)=>{fr.push(...f);on.push(...o);},p=>{ const pc=Math.round(p*100); bar.style.width=pc+"%"; msg(`扒谱中 ${pc}%（${len} 的歌，请停在这个页面）`); document.title=`扒谱 ${pc}% · 落键练琴`; }); }
+    try{ await BP.bp.evaluateModel(x,(f,o)=>{fr.push(...f);on.push(...o);},p=>{ const pc=Math.round(p*100); prog?.(pc); msg(`扒谱中 ${pc}%（${len} 的音频，请停在这个页面）`); document.title=`扒谱 ${pc}% · 落键练琴`; }); }
     finally{ B.tf.engine().endScope(); }
-    const raw=B.noteFramesToTime(B.outputToNotesPoly(fr,on,.25,.25,5)).map(n=>({t:n.startTimeSeconds,d:n.durationSeconds,m:n.pitchMidi,v:n.amplitude}));
-    const notes=PV.arrange(raw,ARR); if(!notes.length) throw new Error("没扒到音符（这段音频可能是静音）");
-    const t0=notes[0].t-2; notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // 第一个音前留 2 秒
-    msg(""); newSong(title+(ARR==="raw"?"":" · 钢琴版"),notes,{L:95,R:355}); toast(`扒到 ${raw.length} 个音，编成 ${notes.length} 个。不对的地方用 ✎ 编辑改。`);
-  }catch(e){ console.warn(e); msg("转换失败："+(e.message||e)+(e.name==="EncodingError"?"（这个文件浏览器读不了，换 mp3 试试）":"")); }
-  finally{ if(BP) BP.busy=false; $("arrBox").hidden=true; document.title="落键练琴"; }
+    return B.noteFramesToTime(B.outputToNotesPoly(fr,on,.25,.25,5)).map(n=>({t:n.startTimeSeconds,d:n.durationSeconds,m:n.pitchMidi,v:n.amplitude}));
+  }finally{ if(BP) BP.busy=false; document.title="落键练琴"; }
 }
 function newSong(title,notes,colors){
   if(notes.some(n=>!n.f)) PV.fingering(notes);
   const s={id:Date.now().toString(36),title,notes,colors,dur:Math.max(...notes.map(n=>n.t+n.d))};
-  songs.unshift(s); saveSongs(); openSong(s);
+  songs.unshift(s); saveSongs(); openSong(s); return s;
 }
 function renderLib(){
-  $("songList").innerHTML=songs.length?songs.map((s,i)=>`<div class="song"><b>${esc(s.title)}</b><span class="muted">${s.notes.length} 个音 · ${fmt(s.dur)}</span><button class="pri" data-open="${i}">练习</button><button data-ren="${i}">改名</button><button data-del="${i}">删除</button></div>`).join("")
+  const ago=d=>{ const x=(Date.now()-d)/864e5; return x<1?"今天":x<2?"昨天":x<30?Math.floor(x)+" 天前":new Date(d).toLocaleDateString("zh-CN"); };
+  $("songList").innerHTML=songs.length?songs.map((s,i)=>{ const a=store.get("att-"+s.id,[]), best=a.length?Math.max(...a.map(r=>r.acc||0)):null;
+      return `<div class="song"><div class="st"><b>${esc(s.title)}</b><span class="muted">${s.notes.length} 个音 · ${fmt(s.dur)}${a.length?` · 上次练 ${ago(a[0].date)} · 最好 ${best}%`:" · 还没练过"}</span></div><button class="pri" data-open="${i}">练习</button><button class="ic" data-ren="${i}" aria-label="改名" title="改名">✎</button><button class="ic" data-del="${i}" aria-label="删除" title="删除">🗑</button></div>`; }).join("")
     :`<p class="muted">还没有曲子，先导入一个视频。</p>`;
+  if(songs.length) $("lib").prepend($("myCard")); else $("lib").append($("myCard")); // 有曲子时放最上面
+  navigator.storage?.estimate?.().then(e=>{ $("useV").textContent=`已用 ${(e.usage/1048576).toFixed(1)} MB`+(e.quota?` / 可用约 ${e.quota>2**31?Math.round(e.quota/2**30)+" GB":Math.round(e.quota/1048576)+" MB"}`:"")+(DB?"":"（IndexedDB 不能用，存储只有约 5 MB）"); }).catch(()=>{});
 }
 
 /* ===================== 校准 + 识别视频 ===================== */
@@ -483,7 +518,8 @@ async function scan(){
     const off=PV.alignAudio(x,22050,notes); notes.forEach(n=>n.t+=off); PV.audioDynamics(x,22050,notes);
   }catch(e){ console.warn("no audio",e); toast("这个视频没有声音（或读不出来），力度和踏板用默认值。"); }
   const t0=notes[0].t-2; if(t0>0) notes.forEach(n=>n.t=+(n.t-t0).toFixed(3)); // start 2 s before the first note
-  newSong(CAL.title,notes,colors);
+  SRC.set(newSong(CAL.title,notes,colors).id,V.src); // 留着这次的视频：✎ 里的 🔍 声音检查不用再选文件
+  toast("识别完成。想检查有没有认错：点 ✎ 编辑 → 🔍 用原视频的声音比对。");
 }
 
 /* ===================== 播放 / 练习状态 ===================== */
@@ -536,12 +572,12 @@ document.addEventListener("change",e=>{ const h=e.target.dataset?.ch; if(!h) ret
   S.color[h]=c; S.recent=[c,...S.recent.filter(x=>String(x)!==String(c))].slice(0,5); uiSync(); });
 
 /* ===================== 编辑音符 + 撤销/重做 + 版本 ===================== */
-const snap=()=>S.song.notes.map(({hit,miss,...n})=>({...n}));
+const snap=()=>S.song.notes.map(({hit,miss,...n})=>({...n})), SRC=new Map(); // SRC: 这次识别的视频（检查用，只在内存里）
 const pushUndo=()=>{ S.undo.push(snap()); if(S.undo.length>100) S.undo.shift(); S.redo=[]; };
-function edited(){ const s=S.song; s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); s.dur=Math.max(1,...s.notes.map(n=>n.t+n.d)); $("seek").max=s.dur;
+function edited(){ const s=S.song; if(S.sel) delete S.sel.q; s.notes.sort((a,b)=>a.t-b.t||a.m-b.m); s.dur=Math.max(1,...s.notes.map(n=>n.t+n.d)); $("seek").max=s.dur;
   PEDM.delete(s); saveSongs(); resetFrom(S.t); S.dirty=true; ebarSync(); }
 function setNotes(notes){ S.song.notes=notes.map(n=>({...n})); S.sel=null; edited(); }
-function ensureOrig(){ try{ if(localStorage.getItem("pv-orig-"+S.song.id)==null) store.set("orig-"+S.song.id,snap()); }catch(e){} } // 第一次编辑前的样子 = 原始版本
+function ensureOrig(){ if(!store.has("orig-"+S.song.id)) store.set("orig-"+S.song.id,snap()); } // 第一次编辑前的样子 = 原始版本
 function saveVer(label){ const k="ver-"+S.song.id; store.set(k,[{date:Date.now(),label,notes:snap()},...store.get(k,[])].slice(0,8)); }
 function renderVers(){ const v=store.get("ver-"+S.song.id,[]), d=t=>new Date(t).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
   $("verList").innerHTML=`<div class="song"><b>⭐ 原始版本（识别 / 导入时的样子）</b><button data-ver="orig">恢复</button></div>`+
@@ -551,7 +587,16 @@ async function restoreVer(i){ const n=i==="orig"?store.get("orig-"+S.song.id,nul
   if(S.dirty) saveVer("恢复前"); pushUndo(); setNotes(n); S.dirty=false; $("verDlg").close(); toast("已恢复，按 ↶ 可撤销"); }
 function enterEdit(){ if(!S.song) return; pause(); ensureOrig(); S.edit=true; S.sel=null; $("panel").hidden=true; uiSync(); }
 function exitEdit(){ if(S.dirty) saveVer("编辑"); S.dirty=false; S.edit=false; S.sel=null; uiSync(); }
-function ebarSync(){ $("ebar").hidden=!S.edit; $("undoBtn").disabled=!S.undo.length; $("redoBtn").disabled=!S.redo.length; for(const b of document.querySelectorAll("#ebar .es")) b.disabled=!S.sel; }
+// 🔍 声音检查：Basic Pitch 扒原视频的声音，和识别结果比对。声音里没有的音 = n.q（黄色虚线框），声音里有、我们没认出的 = s.ghosts（虚线空框，点一下加进来）
+$("chkFile").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f) audioCheck(f); };
+async function audioCheck(blob){ const s=S.song;
+  try{ const aud=await transcribe(blob,t=>$("hud").textContent=t); if(S.song!==s) return;
+    const r=PV.audioCheck(s.notes,aud); if(r.matched<s.notes.length*.3) return toast("声音和音符对不上：是不是选错了视频？（或者这个视频的声音不是钢琴）");
+    pushUndo(); S.sel=null; s.notes.forEach(n=>{ delete n.q; }); r.extra.forEach(i=>s.notes[i].q=1); s.ghosts=r.ghosts; edited();
+    toast(`对上 ${r.matched} 个音。可疑：${r.extra.length} 个声音里没有（黄虚线框），${r.ghosts.length} 个可能漏掉（空虚线框，点一下加进来）。点“可疑 ›”逐个看。`);
+  }catch(e){ console.warn(e); toast("检查失败："+(e.message||e)); } }
+function ebarSync(){ const s=S.song, nq=s?s.notes.filter(n=>n.q).length+(s.ghosts?.length||0):0; $("chkNext").hidden=!nq; $("chkNext").textContent=`可疑 ${nq} ›`;
+  $("ebar").hidden=!S.edit; $("undoBtn").disabled=!S.undo.length; $("redoBtn").disabled=!S.redo.length; for(const b of document.querySelectorAll("#ebar .es")) b.disabled=!S.sel; }
 
 $("rate").oninput=e=>{S.rate=+e.target.value;uiSync();};
 // "+"/"-" step 5 %, a number sets it; kept within the slider's 25–150 %
@@ -659,7 +704,7 @@ function noteOn(m,src,tAt){ // tAt: song time of the actual press (mic hears it 
     for(let i=S.fi;i<ns.length&&ns[i].t<=tt+WIN*S.rate;i++){ const n=ns[i]; if(n.m===m&&isUser(n)&&!n.hit&&Math.abs(n.t-tt)<=bd){bd=Math.abs(n.t-tt);best=n;} }
     if(best){ best.hit=true; fx(m,true); if(r){r.hits++;r.errs.push(Math.round((tt-best.t)/S.rate*1000));} return; }
   }
-  if(src!=="mic"){ fx(m,false); if(r){r.wrong++;r.wrongAt.push(+S.t.toFixed(2));} }
+  if(src!=="mic"){ fx(m,false); if(r){r.wrong++;r.wrongAt.push(+S.t.toFixed(2));} if(S.mode==="wait") S.hint={m,until:performance.now()+1600}; } // 等我弹：弹错了，键盘上写出“弹了什么 / 该弹什么”
 }
 const fx=(m,ok)=>S.fx.set(m,[ok,performance.now()+(ok?300:500)]);
 const KM="awsedftgyhujkolp;'"; let oct=4;
@@ -694,6 +739,9 @@ cv.addEventListener("pointerdown",e=>{
     const d=L.dpr, hit=L.rects.slice().reverse().find(([x0,y0,w,h])=>x>=x0-3*d&&x<=x0+w+3*d&&y>=y0-6*d&&y<=y0+h+6*d);
     if(hit){ const n=hit[4], kx=L.keys.find(k=>k.m===n.m)?.x??x; pause(); if(S.sel!==n) tone(n.m,.3,.6); S.sel=n; ebarSync();
       G.ed={id:e.pointerId,n,t0:n.t,d0:n.d,y0:e.clientY,x0:e.clientX,dx:kx-x,len:y<hit[1]+Math.min(12*d,hit[3]/3),before:snap(),moved:false}; cv.setPointerCapture(e.pointerId); return; }
+    const gh=L.ghosts?.find(([x0,y0,w,h])=>x>=x0-3*d&&x<=x0+w+3*d&&y>=y0-6*d&&y<=y0+h+6*d)?.[4];
+    if(gh){ const s=S.song, near=s.notes.filter(n=>Math.abs(n.t-gh.t)<1.5).sort((a,b)=>Math.abs(a.m-gh.m)-Math.abs(b.m-gh.m))[0];
+      pushUndo(); const n={t:gh.t,d:gh.d,m:gh.m,h:near?.h??(gh.m<60?"L":"R"),v:.75}; s.notes.push(n); s.ghosts.splice(s.ghosts.indexOf(gh),1); S.sel=n; PV.fingering(s.notes); edited(); tone(n.m,.3,.6); return; }
     if(S.sel){ S.sel=null; ebarSync(); } }
   Object.assign(G,{id:e.pointerId,y0:e.clientY,t0:S.t,drag:false,was:S.playing,x,y,side:(e.clientX-r.left)/r.width}); cv.setPointerCapture(e.pointerId);
 });
@@ -762,10 +810,14 @@ function draw(now){
     const w=k.black?k.w*.95:k.w*.84, x0=k.x-w/2, dim=dimOther&&n.h!==S.hand;
     cx.fillStyle=col(n.h,k.black?44:64,(dim?.22:n.hit?.55:1)*(.15+.85*S.vol[n.h])); rr(x0,y0,w,y1-y0,4*dpr); cx.fill(); // 音量调小，那只手的音符也跟着变淡
     if(n.miss){ cx.strokeStyle="#ff4d4d"; cx.lineWidth=2*dpr; cx.stroke(); }
+    if(S.edit&&n.q){ cx.setLineDash([4*dpr,3*dpr]); cx.strokeStyle="#ffd84a"; cx.lineWidth=2*dpr; cx.stroke(); cx.setLineDash([]); }
     const lab=S.names?PV.NAMES[n.m%12]:S.fing&&n.f; // 音名开着：音符上写 C–B，指法号留在键盘上
     if(lab&&!dim) labs.push([lab,k.x,y1]);
     rects.push([x0,y0,w,y1-y0,n]);
   }
+  const ghosts=[]; if(S.edit) for(const g of S.song.ghosts||[]){ if(g.t>t+LA||g.t+g.d<t) continue; const k=byM[g.m]; if(!k) continue;
+    const y0=Math.max(-10,top-(g.t+g.d-t)*pps), y1=Math.min(top,top-(g.t-t)*pps), w=k.black?k.w*.95:k.w*.84; if(y1-y0<1) continue;
+    cx.setLineDash([4*dpr,3*dpr]); cx.strokeStyle="#ffffffb0"; cx.lineWidth=1.5*dpr; rr(k.x-w/2,y0,w,y1-y0,4*dpr); cx.stroke(); cx.setLineDash([]); ghosts.push([k.x-w/2,y0,w,y1-y0,g]); }
   // 音名/指法写在音符底端，白字黑边、最后画：短音符也看得到，不被别的音符盖住
   cx.lineJoin="round"; cx.lineWidth=3*dpr; cx.strokeStyle="#000c"; cx.fillStyle="#fff";
   for(const [lab,x,y] of labs){ const yy=y-6*dpr; cx.strokeText(lab,x,yy); cx.fillText(lab,x,yy); }
@@ -813,8 +865,10 @@ function draw(now){
   cx.font=`700 ${Math.round(Math.min(ww*.6,14*dpr))}px sans-serif`;
   for(const [m,n] of want.size?want:(S.fing?active:new Map())){ const k=byM[m]; if(!k) continue; const y=top+(k.black?kbH*.45:kbH*.78);
     if(want.size){ cx.strokeStyle=col(n.h,60,.6+.4*Math.sin(now/130)); cx.lineWidth=3*dpr; rr(k.x-k.w/2+dpr,top+dpr,k.w-2*dpr,(k.black?kbH*.63:kbH)-2*dpr,3*dpr); cx.stroke(); }
+    if(want.size&&S.hint?.until>now){ cx.lineJoin="round"; cx.lineWidth=3*dpr; cx.strokeStyle="#000c"; cx.fillStyle=col(n.h,75); const ty=top-14*dpr; cx.strokeText(PV.nameOf(m),k.x,ty); cx.fillText(PV.nameOf(m),k.x,ty); }
     if(S.fing&&n.f){ cx.fillStyle="#000a"; cx.beginPath(); cx.arc(k.x,y,Math.min(k.w*.42,10*dpr),0,7); cx.fill(); cx.fillStyle="#fff"; cx.fillText(n.f,k.x,y+dpr*.5); } }
-  S.L={dpr,keys,top,kbH,rects};
+  if(want.size&&S.hint?.until>now&&!want.has(S.hint.m)){ const k=byM[S.hint.m]; if(k){ cx.lineWidth=3*dpr; cx.strokeStyle="#000c"; cx.fillStyle="#ff6b6b"; const ty=top-14*dpr, tx=PV.nameOf(S.hint.m)+"✗"; cx.strokeText(tx,k.x,ty); cx.fillText(tx,k.x,ty); } }
+  S.L={dpr,keys,top,kbH,rects,ghosts};
   const sl=S.sel, hud=S.edit?`✎ 编辑  `+(sl?`${PV.nameOf(sl.m)} · ${sl.h==="L"?"左手":"右手"}${sl.f?" · "+sl.f+"指":""} · ${sl.t.toFixed(2)}s · 长 ${sl.d.toFixed(2)}s`:"点音符选中 · 拖动：上下=时间 左右=音高 · 拖上端=长短"):`${fmt(t)} / ${fmt(S.song.dur)}`+(bt?`  · 第 ${Math.max(1,PV.barOf(bt,t+.1))} 小节 · ${bt.bpm} BPM`:"")+(ped?"  · 🦶踏板":"")+(want.size&&S.waiting?`   等你弹：${[...want.values()].map(n=>PV.nameOf(n.m)+(n.f?"("+n.f+"指)":"")).join("  ")}`:"")+(S.rec?`   ✓${S.rec.hits}  ✗${S.rec.wrong}${S.mode==="follow"?"  漏"+S.rec.miss:""}`:"");
   if($("hud").textContent!==hud) $("hud").textContent=hud;
   if(!$("seek").matches(":active")) $("seek").value=t; const tm=fmt(t); if($("tm").textContent!==tm) $("tm").textContent=tm;
@@ -925,6 +979,7 @@ function micFrame(now){
 }
 function micHud(t){ const el=$("micHud"); if(el.textContent!==t) el.textContent=t; }
 
-renderLib(); arrUI();
+bootStore().then(()=>{ songs=store.get("songs",[]); renderLib(); });
+arrUI();
 </script>
 </body></html>
