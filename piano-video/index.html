@@ -64,7 +64,7 @@ dialog{background:var(--bg2);color:var(--ink);border:1px solid var(--line);borde
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:10px;max-width:90vw;z-index:9}
 kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:12px}
 </style></head><body>
-<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.15 · 11-07</small></h1><button data-go="lib">曲库</button></header>
+<header><h1>🎹 落键练琴 <small class="muted mono" style="font-size:12px;font-weight:400">v3.16 · 11-07</small></h1><button data-go="lib">曲库</button></header>
 <main>
 <!-- ================= 导入 / 曲库 ================= -->
 <section id="lib">
@@ -177,7 +177,7 @@ kbd{background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding
 <dialog id="dlg"><form method="dialog"><p id="dlgMsg"></p><input id="dlgIn" type="text"><div class="row" style="justify-content:flex-end"><button value="">取消</button><button class="pri" value="ok">确定</button></div></form></dialog>
 <!-- bump ?v= with the version above so browsers fetch the new core.js -->
 <script src="lib/mp4box.all.min.js"></script>
-<script src="core.js?v=3.15"></script>
+<script src="core.js?v=3.16"></script>
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -416,10 +416,14 @@ function autoDetect(){
   const mx=Math.max(...jump); let i=jump.findIndex(j=>j>=.6*mx); for(let k=i;k<i+8&&k<jump.length;k++) if(jump[k]>jump[i]) i=k;
   const by=y0+i;
   CAL.top=by; CAL.lineY=Math.max(0,by-Math.max(6,Math.round(h*.06))); // clear of the line on top of the keyboard and the glow notes make when they hit it
-  const lw=rowLuma(by+(h-by)*.85); let x0=0,x1=w; while(x0<w-1&&lw[x0]<140)x0++; while(x1>x0+1&&lw[x1-1]<140)x1--;
+  const lw=rowLuma(by+(h-by)*.85), nb=(lo,hi)=>{let c=0;for(let m=lo;m<=hi;m++)c+=PV.isBlack(m);return c;}, R=[[21,108],[28,103],[36,96],[36,84],[48,96],[48,84]];
+  const edges=th=>{ let x0=0,x1=w; while(x0<w-1&&lw[x0]<th)x0++; while(x1>x0+1&&lw[x1-1]<th)x1--; return [x0,x1,PV.detectBlacks(rowLuma(blackRowY()),x0,x1).length]; };
+  let [x0,x1,n]=edges(140);
+  // no keyboard size fits the black keys found: a dim keyboard (Cry For Me: blue-grey keys ~110-140, so 140 found only a lit key
+  // and squeezed 88 keys into a third of the width). Retry relative to the row (75th percentile: keys cover most of it); keyboards 140 already fits are left alone
+  if(!R.some(([lo,hi])=>nb(lo,hi)===n)){ const e=edges(Math.min(140,.6*lw.slice().sort((a,b)=>a-b)[Math.floor(w*.75)])); if(e[1]-e[0]>x1-x0) [x0,x1,n]=e; }
   CAL.x0=x0; CAL.x1=x1;
-  const n=PV.detectBlacks(rowLuma(blackRowY()),x0,x1).length, nb=(lo,hi)=>{let c=0;for(let m=lo;m<=hi;m++)c+=PV.isBlack(m);return c;};
-  const r=[[21,108],[28,103],[36,96],[36,84],[48,96],[48,84]].find(([lo,hi])=>nb(lo,hi)===n)||[21,108];
+  const r=R.find(([lo,hi])=>nb(lo,hi)===n)||[21,108];
   [CAL.lo,CAL.hi]=r;
 }
 function calKeys(){ CAL.blackXs=PV.detectBlacks(rowLuma(blackRowY()),Math.round(CAL.x0),Math.round(CAL.x1)); return PV.layout(CAL.lo,CAL.hi,CAL.x0,CAL.x1,CAL.blackXs); }
@@ -505,7 +509,9 @@ async function scan(){
   let notes=PV.extractNotes(times,LS(lr),km,.25,LS(ur)); const kS=(ks,s)=>PV.extractNotes(times,kr.map(r=>PV.sampleKeys(r,CAL.w,ks,CAL.vMin,s,2)),km,.25,null); /* the glow a lit key throws on its neighbours is paler (sat .3-.4); the stripe itself ~.9 */
   const pn=PV.paleNotes(times,lr,ur,CAL.w,keys,Math.max(CAL.vMin,.7),kw,kr);
   const solid=ns=>ns.filter(n=>n.d>=.1).length; /* 真的短音多也会“碎”：亮度模式还得不丢正常长度的音（Are You Lost 的淡紫色）；除非默认结果多出好几倍 = 亮背景上全是假音（Falling Tears：10559 对 1471） */
-  if(pn.length>=30&&PV.fragFrac(pn)<PV.fragFrac(notes)-.15&&(solid(pn)>=.8*solid(notes)||notes.length>5*pn.length)){ notes=pn; toast("这个视频背景很亮、有白色/浅色音符，改用亮度来识别。"); }
+  /* 亮度模式认出的音大多默认结果里根本没有 = 默认方式没看见白色音条，抓的是别的东西（Cry For Me：白色音条被当成火花丢掉，留下 6804 个橙色烟雾/火花碎块） */
+  const unseen=pn.filter(p=>!notes.some(n=>n.m===p.m&&n.t<p.t+p.d&&p.t<n.t+n.d)).length/(pn.length||1);
+  if(pn.length>=30&&PV.fragFrac(pn)<PV.fragFrac(notes)-.15&&(solid(pn)>=.8*solid(notes)||notes.length>5*pn.length||unseen>.5)){ notes=pn; toast("这个视频有白色/浅色音符，改用亮度来识别。"); }
   let kn=kS(keys,.4); if(kn.length>=30) kn=kS(PV.stripeShift(kr,times,CAL.w,keys,kn),.5);
   if(PV.useKeys(notes,kn)){ notes=PV.barHueNotes(kn,times,bh,km); toast("这个视频按下的琴键会发亮，改用琴键本身来识别。"); } // 检测线上的音符条被切碎了（空心/霓虹音符、火花）
   if(!notes.length) return toast("没识别到音符：把黄色检测线放在音符经过的地方（键盘上方一点），或调低亮度阈值再试。");
